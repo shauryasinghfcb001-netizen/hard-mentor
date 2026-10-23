@@ -1,0 +1,328 @@
+TERMINAL DEMONSTRATION (not a student interface).
+WHAT RUNS: exam research = offline MOCK fixture (no web); planner = rule-planner-v1 (no model); quiz = rules over NCERT Ch 1 notes;
+memory = H-MEM per student; records = local synthetic CSV copy in /var/folders/lf/vwzs5cg50n3635flw0cg4wtw0000gn/T/tmp.tIxoA9wKOM; students and their messages are fictional; clock starts 2026-10-23T09:00Z.
+
+
+# Fictional conversation for `npm run demo:chat`. Riya and Kabir are fictional.
+
+# Answers are typed by this script, chosen so one question is wrong in quiz 1.
+
+# --- 1. Exam intake (research = offline MOCK list, nothing fetched) ---
+
+Riya (fictional) > hi
+Mentor > Hi Riya. Before I plan anything I need to know your exam. Which exam are you preparing for?
+   | (intake step, no graph run; next step: exam)
+
+Riya (fictional) > 12th boards
+Mentor > Thanks. Which country is 12th boards in?
+   | (intake step, no graph run; next step: country)
+
+Riya (fictional) > India
+Mentor > What is your goal for it? For example a score or a rank.
+   | (intake step, no graph run; next step: goal)
+
+Riya (fictional) > 90% in PCM
+Mentor > When is the exam? Give a date like 2027-02-15, or say "not sure".
+   | (intake step, no graph run; next step: date)
+
+Riya (fictional) > 15 Feb 2027
+Mentor > "12th boards" in India could mean 3 different exams. Which one are you taking?
+         - CBSE Class 12 board exam (Central Board of Secondary Education)
+         - ISC Class 12 exam (Council for the Indian School Certificate Examinations)
+         - State board Class 12 exam (a state board of school education (varies by state))
+         Reply with the name of yours.
+   | (intake step, no graph run; next step: choice)
+
+Riya (fictional) > CBSE
+Mentor > Riya, got it: CBSE Class 12 board exam (Central Board of Secondary Education), as you chose.
+         What I know about it comes from a small offline list I was given, not from the web, so none of it is verified:
+         - conducting_body: Central Board of Secondary Education (UNVERIFIED: mock fixture: not fetched from the web; source https://www.cbse.gov.in, retrieved never)
+         - textbooks: NCERT textbooks (UNVERIFIED: mock fixture: not fetched from the web; source https://ncert.nic.in, retrieved never)
+         Exam date 2027-02-15 is your date, not an official one (115 days from 2026-10-23).
+         Local notes I can quiz you from: ncert-phy12-ch1.
+         Say "plan my study for today" or "quiz me".
+   | (intake step, no graph run; next step: done)
+
+# --- 2. First plan, before any quiz ---
+
+Riya (fictional) > Plan my study for today.
+Mentor > Today: Electrostatics first for 90 min, then Integrals and Organic Chemistry.
+   | Decision: daily_plan (sent)
+   | Why:
+   |   - Electrostatics is your top priority: mastery 0.35, marks weight 0.8, priority 0.656  [data_row: csv:study-records.csv#2]
+   | Loop:
+   |   1. [sense] intent plan (rules: schedule wording)
+   |   2. [recall] exam context: CBSE Class 12 board exam (student choice, 3 candidates); 0/2 facts verified; exam date 2027-02-15 (student-stated); research by fixture-exams-2026-10-23 (mock, not web) at 2026-10-23T09:03:00.000Z
+   |   3. [recall] ranked 4 topics by (1-mastery)*marks_weight*urgency; top physics:electrostatics
+   |   4. [recall] H-MEM (vendor/hmem) returned 0: hybrid ranking for "Plan my study for today." (domain: general)
+   |   5. [draft_plan] attempt 1 by rule-planner-v1 (rules): decision daily_plan
+   |   6. [check_plan] attempt 1 passed all rules
+   |   7. [respond] sent decision daily_plan
+   |   8. [write_back] H-MEM episode mem-1 written (decision summary, not the raw message)
+   | SQL: (not available: Zetaris federation not wired yet)
+
+# --- 3. Quiz request, answers over several messages ---
+
+Riya (fictional) > quiz me
+Mentor > Quiz quiz-ncert-phy12-ch1-2026-10-23-r0 on Electrostatics: 5 fill-in-the-blank questions cut from NCERT Physics Part I, Class 12 Ch 1 notes (built by rules, no model). These questions check recall of the notes' wording, not problem solving.
+         Q1. Sparks when removing a sweater, lightning and small shocks from a car door all come from charge built up by rubbing insulating surfaces and then _____.
+             A) convention   B) discharging   C) permanent   D) presence
+             [from NCERT Physics Part I, Class 12, Ch 1, §1.1, p. 1]
+         Q2. By _____, the charge on a glass rod or cat's fur is called positive and the charge on a plastic rod or silk is called negative.
+             A) comparatively   B) convention   C) disturb   D) uniform
+             [from NCERT Physics Part I, Class 12, Ch 1, §1.2, pp. 1-2]
+         Q3. Conductors let charge move through them easily because they contain _____ free electrons.
+             A) algebraic   B) comparatively   C) directions   D) distribution
+             [from NCERT Physics Part I, Class 12, Ch 1, §1.3, p. 3]
+         Q4. Charges add like real numbers (scalars): the total charge of a system is the _____ sum of the individual charges, with signs.
+             A) algebraic   B) measures   C) quantisation   D) spherical
+             [from NCERT Physics Part I, Class 12, Ch 1, §1.4.1, 1.4.2, p. 4]
+         Q5. At everyday (macroscopic) scales the charges are so large compared with e that _____ can be ignored and charge treated as continuous.
+             A) discharging   B) permanent   C) presence   D) quantisation
+             [from NCERT Physics Part I, Class 12, Ch 1, §1.4.3, pp. 5-6]
+         Answer with letters in order (e.g. "B, A, D, C, A") or one at a time ("Q2: B"). Say "pass" for one you don't know, or "cancel quiz" to stop. Nothing is saved until all 5 are answered.
+   | Decision: quiz_started (quiz)
+   | Why:
+   |   - Quiz on Electrostatics, the highest-priority topic that has local notes (priority 0.656)  [data_row: csv:study-records.csv#2]
+   | Loop:
+   |   1. [sense] intent quiz_start (rules)
+   |   2. [quiz] started quiz-ncert-phy12-ch1-2026-10-23-r0 (round 0) on physics:electrostatics; 5 items from ncert-phy12-ch1
+   | SQL: (not available: Zetaris federation not wired yet)
+
+Riya (fictional) > B, B
+Mentor > Got Q1, Q2. 2/5 answered; still open: Q3, Q4, Q5. Nothing is saved until all are answered, or say "cancel quiz".
+   | Decision: quiz_progress (quiz)
+   | Why:
+   | Loop:
+   |   1. [sense] intent quiz_answer (rules; quiz open)
+   |   2. [quiz] quiz-ncert-phy12-ch1-2026-10-23-r0: 2/5 answered; 0 unreadable part(s); nothing written
+   | SQL: (not available: Zetaris federation not wired yet)
+
+# A message that is not an answer: the quiz stays open, nothing is saved
+
+Riya (fictional) > Can I do this later?
+Mentor > I couldn't read an answer in that. I couldn't use: "Can I do this later?" is not one of the options for Q3. 2/5 answered; still open: Q3, Q4, Q5. Nothing is saved until all are answered, or say "cancel quiz".
+   | Decision: quiz_progress (quiz)
+   | Why:
+   | Loop:
+   |   1. [sense] intent quiz_answer (rules; quiz open)
+   |   2. [quiz] quiz-ncert-phy12-ch1-2026-10-23-r0: 2/5 answered; 1 unreadable part(s); nothing written
+   | SQL: (not available: Zetaris federation not wired yet)
+
+# Another student talks in between: Kabir's session is separate from Riya's open quiz
+
+Kabir (fictional) > quiz me
+Mentor > Hi Kabir. Before I plan anything I need to know your exam. Which exam are you preparing for?
+   | (intake step, no graph run; next step: exam)
+
+Riya (fictional) > Q3: directions, Q4: A, Q5: D
+Mentor > Quiz quiz-ncert-phy12-ch1-2026-10-23-r0: 4/5.
+         Q1 correct: "discharging" [NCERT Physics Part I, Class 12, Ch 1, §1.1, p. 1]
+         Q2 correct: "convention" [NCERT Physics Part I, Class 12, Ch 1, §1.2, pp. 1-2]
+         Q3 wrong: you chose "directions"; the answer is "comparatively". The note says: "Conductors let charge move through them easily because they contain comparatively free electrons." [NCERT Physics Part I, Class 12, Ch 1, §1.3, p. 3]
+         Q4 correct: "algebraic" [NCERT Physics Part I, Class 12, Ch 1, §1.4.1, 1.4.2, p. 4]
+         Q5 correct: "quantisation" [NCERT Physics Part I, Class 12, Ch 1, §1.4.3, pp. 5-6]
+         Saved: mastery 0.35 -> 0.485 (m = 0.7m + 0.3 x score) in csv:study-records.csv#2; quiz log csv:quiz-log.csv#2; memory mem-2.
+         Revise note phy12-1-3 next.
+         These questions check recall of the notes' wording, not problem solving. Ask "plan my study for today" to see how this changes your plan.
+   | Decision: quiz_scored (quiz)
+   | Why:
+   |   - Scored 4/5 on quiz quiz-ncert-phy12-ch1-2026-10-23-r0  [quiz: csv:quiz-log.csv#2]
+   |   - Mastery 0.35 -> 0.485  [data_row: csv:study-records.csv#2]
+   |   - Quiz result stored in memory (score and missed notes, not typed answers)  [memory: mem-2]
+   |   - Question cut from NCERT note phy12-1-1  [ncert: phy12-1-1]
+   |   - Question cut from NCERT note phy12-1-2  [ncert: phy12-1-2]
+   |   - Question cut from NCERT note phy12-1-3  [ncert: phy12-1-3]
+   |   - Question cut from NCERT note phy12-1-4  [ncert: phy12-1-4]
+   |   - Question cut from NCERT note phy12-1-5  [ncert: phy12-1-5]
+   | Loop:
+   |   1. [sense] intent quiz_answer (rules; quiz open)
+   |   2. [quiz] quiz-ncert-phy12-ch1-2026-10-23-r0 scored 4/5 by exact match against the note word
+   |   3. [quiz] wrote mastery 0.35 -> 0.485, quiz log row, H-MEM mem-2
+   | SQL: (not available: Zetaris federation not wired yet)
+
+# --- 4. The same completion message again: must not be counted twice ---
+
+Riya (fictional) > Q3: directions, Q4: A, Q5: D
+Mentor > Today: Electrostatics first for 90 min, then Integrals and Organic Chemistry.
+         What changed since your last plan (2026-10-23 09:10 UTC):
+         - Electrostatics mastery 0.35 -> 0.485 after quiz quiz-ncert-phy12-ch1-2026-10-23-r0 (4/5, csv:quiz-log.csv#2); priority 0.656 -> 0.519
+         - Top topic unchanged: Electrostatics still has the highest priority (0.519).
+   | Decision: daily_plan (sent)
+   | Why:
+   |   - Electrostatics is your top priority: mastery 0.48, marks weight 0.8, priority 0.519  [data_row: csv:study-records.csv#2]
+   |   - Electrostatics mastery was last updated by quiz quiz-ncert-phy12-ch1-2026-10-23-r0: 4/5 on 2026-10-23  [quiz: csv:quiz-log.csv#2]
+   | Loop:
+   |   1. [sense] intent plan (rules: no question or definition cue)
+   |   2. [recall] exam context: CBSE Class 12 board exam (student choice, 3 candidates); 0/2 facts verified; exam date 2027-02-15 (student-stated); research by fixture-exams-2026-10-23 (mock, not web) at 2026-10-23T09:03:00.000Z
+   |   3. [recall] ranked 4 topics by (1-mastery)*marks_weight*urgency; top physics:electrostatics
+   |   4. [recall] H-MEM (vendor/hmem) returned 0: hybrid ranking for "Q3: directions, Q4: A, Q5: D" (domain: general)
+   |   5. [draft_plan] attempt 1 by rule-planner-v1 (rules): decision daily_plan
+   |   6. [check_plan] attempt 1 passed all rules
+   |   7. [respond] sent decision daily_plan
+   |   8. [write_back] H-MEM episode mem-3 written (decision summary, not the raw message)
+   | SQL: (not available: Zetaris federation not wired yet)
+
+# --- 5. Next plan: reads the saved record and quiz log ---
+
+Riya (fictional) > Plan my study for today.
+Mentor > Today: Electrostatics first for 90 min, then Integrals and Organic Chemistry.
+         What changed since your last plan (2026-10-23 09:28 UTC):
+         - No study record changed.
+         - Top topic unchanged: Electrostatics still has the highest priority (0.519).
+   | Decision: daily_plan (sent)
+   | Why:
+   |   - Electrostatics is your top priority: mastery 0.48, marks weight 0.8, priority 0.519  [data_row: csv:study-records.csv#2]
+   |   - Electrostatics mastery was last updated by quiz quiz-ncert-phy12-ch1-2026-10-23-r0: 4/5 on 2026-10-23  [quiz: csv:quiz-log.csv#2]
+   | Loop:
+   |   1. [sense] intent plan (rules: schedule wording)
+   |   2. [recall] exam context: CBSE Class 12 board exam (student choice, 3 candidates); 0/2 facts verified; exam date 2027-02-15 (student-stated); research by fixture-exams-2026-10-23 (mock, not web) at 2026-10-23T09:03:00.000Z
+   |   3. [recall] ranked 4 topics by (1-mastery)*marks_weight*urgency; top physics:electrostatics
+   |   4. [recall] H-MEM (vendor/hmem) returned 2: hybrid ranking for "Plan my study for today." (domain: general)
+   |   5. [draft_plan] attempt 1 by rule-planner-v1 (rules): decision daily_plan
+   |   6. [check_plan] attempt 1 passed all rules
+   |   7. [respond] sent decision daily_plan
+   |   8. [write_back] H-MEM episode mem-4 written (decision summary, not the raw message)
+   | SQL: (not available: Zetaris federation not wired yet)
+
+# --- 6. Second quiz: started, then cancelled (no score), then retaken ---
+
+Riya (fictional) > quiz me
+Mentor > Quiz quiz-ncert-phy12-ch1-2026-10-23-r1 on Electrostatics: 5 fill-in-the-blank questions cut from NCERT Physics Part I, Class 12 Ch 1 notes (built by rules, no model). These questions check recall of the notes' wording, not problem solving.
+         Q1. The _____ of other charges does not change an individual pairwise force.
+             A) discharging   B) permanent   C) presence   D) quantisation
+             [from NCERT Physics Part I, Class 12, Ch 1, §1.6, pp. 11-12]
+         Q2. The test charge must be very small so it does not _____ the source.
+             A) convention   B) disturb   C) presence   D) uniform
+             [from NCERT Physics Part I, Class 12, Ch 1, §1.7, 1.7.1, pp. 14-15]
+         Q3. Two field lines never cross, because the field at a crossing point would have two _____.
+             A) comparatively   B) directions   C) distribution   D) disturb
+             [from NCERT Physics Part I, Class 12, Ch 1, §1.8, pp. 19-21]
+         Q4. Flux _____ the number of field lines crossing the surface.
+             A) algebraic   B) directions   C) measures   D) spherical
+             [from NCERT Physics Part I, Class 12, Ch 1, §1.9, pp. 21-23]
+         Q5. Molecules such as water have a _____ dipole moment.
+             A) discharging   B) measures   C) permanent   D) quantisation
+             [from NCERT Physics Part I, Class 12, Ch 1, §1.10, pp. 23-25]
+         Answer with letters in order (e.g. "B, A, D, C, A") or one at a time ("Q2: B"). Say "pass" for one you don't know, or "cancel quiz" to stop. Nothing is saved until all 5 are answered.
+   | Decision: quiz_started (quiz)
+   | Why:
+   |   - Quiz on Electrostatics, the highest-priority topic that has local notes (priority 0.519)  [data_row: csv:study-records.csv#2]
+   | Loop:
+   |   1. [sense] intent quiz_start (rules)
+   |   2. [quiz] started quiz-ncert-phy12-ch1-2026-10-23-r1 (round 1) on physics:electrostatics; 5 items from ncert-phy12-ch1
+   | SQL: (not available: Zetaris federation not wired yet)
+
+Riya (fictional) > C, B
+Mentor > Got Q1, Q2. 2/5 answered; still open: Q3, Q4, Q5. Nothing is saved until all are answered, or say "cancel quiz".
+   | Decision: quiz_progress (quiz)
+   | Why:
+   | Loop:
+   |   1. [sense] intent quiz_answer (rules; quiz open)
+   |   2. [quiz] quiz-ncert-phy12-ch1-2026-10-23-r1: 2/5 answered; 0 unreadable part(s); nothing written
+   | SQL: (not available: Zetaris federation not wired yet)
+
+Riya (fictional) > cancel quiz
+Mentor > Quiz quiz-ncert-phy12-ch1-2026-10-23-r1 cancelled with 2/5 answered. No score was saved; your mastery and records are unchanged.
+   | Decision: quiz_cancelled (quiz)
+   | Why:
+   | Loop:
+   |   1. [sense] intent quiz_cancel (rules; quiz open)
+   |   2. [quiz] quiz-ncert-phy12-ch1-2026-10-23-r1 cancelled at 2/5; nothing written
+   | SQL: (not available: Zetaris federation not wired yet)
+
+Riya (fictional) > quiz me
+Mentor > Quiz quiz-ncert-phy12-ch1-2026-10-23-r1 on Electrostatics: 5 fill-in-the-blank questions cut from NCERT Physics Part I, Class 12 Ch 1 notes (built by rules, no model). These questions check recall of the notes' wording, not problem solving.
+         Q1. The _____ of other charges does not change an individual pairwise force.
+             A) discharging   B) permanent   C) presence   D) quantisation
+             [from NCERT Physics Part I, Class 12, Ch 1, §1.6, pp. 11-12]
+         Q2. The test charge must be very small so it does not _____ the source.
+             A) convention   B) disturb   C) presence   D) uniform
+             [from NCERT Physics Part I, Class 12, Ch 1, §1.7, 1.7.1, pp. 14-15]
+         Q3. Two field lines never cross, because the field at a crossing point would have two _____.
+             A) comparatively   B) directions   C) distribution   D) disturb
+             [from NCERT Physics Part I, Class 12, Ch 1, §1.8, pp. 19-21]
+         Q4. Flux _____ the number of field lines crossing the surface.
+             A) algebraic   B) directions   C) measures   D) spherical
+             [from NCERT Physics Part I, Class 12, Ch 1, §1.9, pp. 21-23]
+         Q5. Molecules such as water have a _____ dipole moment.
+             A) discharging   B) measures   C) permanent   D) quantisation
+             [from NCERT Physics Part I, Class 12, Ch 1, §1.10, pp. 23-25]
+         Answer with letters in order (e.g. "B, A, D, C, A") or one at a time ("Q2: B"). Say "pass" for one you don't know, or "cancel quiz" to stop. Nothing is saved until all 5 are answered.
+   | Decision: quiz_started (quiz)
+   | Why:
+   |   - Quiz on Electrostatics, the highest-priority topic that has local notes (priority 0.519)  [data_row: csv:study-records.csv#2]
+   | Loop:
+   |   1. [sense] intent quiz_start (rules)
+   |   2. [quiz] started quiz-ncert-phy12-ch1-2026-10-23-r1 (round 1) on physics:electrostatics; 5 items from ncert-phy12-ch1
+   | SQL: (not available: Zetaris federation not wired yet)
+
+Riya (fictional) > C, B, B, C, C
+Mentor > Quiz quiz-ncert-phy12-ch1-2026-10-23-r1: 5/5.
+         Q1 correct: "presence" [NCERT Physics Part I, Class 12, Ch 1, §1.6, pp. 11-12]
+         Q2 correct: "disturb" [NCERT Physics Part I, Class 12, Ch 1, §1.7, 1.7.1, pp. 14-15]
+         Q3 correct: "directions" [NCERT Physics Part I, Class 12, Ch 1, §1.8, pp. 19-21]
+         Q4 correct: "measures" [NCERT Physics Part I, Class 12, Ch 1, §1.9, pp. 21-23]
+         Q5 correct: "permanent" [NCERT Physics Part I, Class 12, Ch 1, §1.10, pp. 23-25]
+         Saved: mastery 0.485 -> 0.64 (m = 0.7m + 0.3 x score) in csv:study-records.csv#2; quiz log csv:quiz-log.csv#3; memory mem-5.
+         No notes missed.
+         These questions check recall of the notes' wording, not problem solving. Ask "plan my study for today" to see how this changes your plan.
+   | Decision: quiz_scored (quiz)
+   | Why:
+   |   - Scored 5/5 on quiz quiz-ncert-phy12-ch1-2026-10-23-r1  [quiz: csv:quiz-log.csv#3]
+   |   - Mastery 0.485 -> 0.64  [data_row: csv:study-records.csv#2]
+   |   - Quiz result stored in memory (score and missed notes, not typed answers)  [memory: mem-5]
+   |   - Question cut from NCERT note phy12-1-7  [ncert: phy12-1-7]
+   |   - Question cut from NCERT note phy12-1-8  [ncert: phy12-1-8]
+   |   - Question cut from NCERT note phy12-1-9  [ncert: phy12-1-9]
+   |   - Question cut from NCERT note phy12-1-10  [ncert: phy12-1-10]
+   |   - Question cut from NCERT note phy12-1-11  [ncert: phy12-1-11]
+   | Loop:
+   |   1. [sense] intent quiz_answer (rules; quiz open)
+   |   2. [quiz] quiz-ncert-phy12-ch1-2026-10-23-r1 scored 5/5 by exact match against the note word
+   |   3. [quiz] wrote mastery 0.485 -> 0.64, quiz log row, H-MEM mem-5
+   | SQL: (not available: Zetaris federation not wired yet)
+
+Riya (fictional) > Plan my study for today.
+Mentor > Today: Integrals first for 90 min, then Electrostatics and Organic Chemistry.
+         What changed since your last plan (2026-10-23 09:41 UTC):
+         - Electrostatics mastery 0.485 -> 0.64 after quiz quiz-ncert-phy12-ch1-2026-10-23-r1 (5/5, csv:quiz-log.csv#3); priority 0.519 -> 0.363
+         - Top topic changed from Electrostatics to Integrals: Integrals now has the highest priority (0.441 vs 0.363).
+   | Decision: daily_plan (sent)
+   | Why:
+   |   - Integrals is your top priority: mastery 0.50, marks weight 0.7, priority 0.441  [data_row: csv:study-records.csv#4]
+   |   - Electrostatics mastery was last updated by quiz quiz-ncert-phy12-ch1-2026-10-23-r1: 5/5 on 2026-10-23  [quiz: csv:quiz-log.csv#3]
+   | Loop:
+   |   1. [sense] intent plan (rules: schedule wording)
+   |   2. [recall] exam context: CBSE Class 12 board exam (student choice, 3 candidates); 0/2 facts verified; exam date 2027-02-15 (student-stated); research by fixture-exams-2026-10-23 (mock, not web) at 2026-10-23T09:03:00.000Z
+   |   3. [recall] ranked 4 topics by (1-mastery)*marks_weight*urgency; top maths:integrals
+   |   4. [recall] H-MEM (vendor/hmem) returned 3: hybrid ranking for "Plan my study for today." (domain: general)
+   |   5. [draft_plan] attempt 1 by rule-planner-v1 (rules): decision daily_plan
+   |   6. [check_plan] attempt 1 passed all rules
+   |   7. [respond] sent decision daily_plan
+   |   8. [write_back] H-MEM episode mem-6 written (decision summary, not the raw message)
+   | SQL: (not available: Zetaris federation not wired yet)
+
+# --- 7. What memory now holds ---
+
+Riya (fictional) > What do you remember about me?
+Mentor > Here is everything I remember about you (6):
+         - On 2026-10-23 the student sent a plan; the mentor decided daily_plan (sent) with plan topics physics:electrostatics, maths:integrals, chemistry:organic. [mem-1]
+         - On 2026-10-23 the student scored 4/5 on quiz quiz-ncert-phy12-ch1-2026-10-23-r0 (physics:electrostatics); mastery 0.35 -> 0.485; missed notes phy12-1-3. [mem-2]
+         - On 2026-10-23 the student sent a plan; the mentor decided daily_plan (sent) with plan topics physics:electrostatics, maths:integrals, chemistry:organic. [mem-3]
+         - On 2026-10-23 the student sent a plan; the mentor decided daily_plan (sent) with plan topics physics:electrostatics, maths:integrals, chemistry:organic. [mem-4]
+         - On 2026-10-23 the student scored 5/5 on quiz quiz-ncert-phy12-ch1-2026-10-23-r1 (physics:electrostatics); mastery 0.485 -> 0.64; no notes missed. [mem-5]
+         - On 2026-10-23 the student sent a plan; the mentor decided daily_plan (sent) with plan topics maths:integrals, physics:electrostatics, chemistry:organic. [mem-6]
+         Say "forget <words>" to delete any of it.
+   | Decision: memory_list (memory_op)
+   | Why:
+   |   - Stored: On 2026-10-23 the student sent a plan; the mentor decided daily_plan (sent) with plan topics physics:electrostatics, maths:integrals, chemistry:organic.  [memory: mem-1]
+   |   - Stored: On 2026-10-23 the student scored 4/5 on quiz quiz-ncert-phy12-ch1-2026-10-23-r0 (physics:electrostatics); mastery 0.35 -> 0.485; missed notes phy12-1-3.  [memory: mem-2]
+   |   - Stored: On 2026-10-23 the student sent a plan; the mentor decided daily_plan (sent) with plan topics physics:electrostatics, maths:integrals, chemistry:organic.  [memory: mem-3]
+   |   - Stored: On 2026-10-23 the student sent a plan; the mentor decided daily_plan (sent) with plan topics physics:electrostatics, maths:integrals, chemistry:organic.  [memory: mem-4]
+   |   - Stored: On 2026-10-23 the student scored 5/5 on quiz quiz-ncert-phy12-ch1-2026-10-23-r1 (physics:electrostatics); mastery 0.485 -> 0.64; no notes missed.  [memory: mem-5]
+   |   - Stored: On 2026-10-23 the student sent a plan; the mentor decided daily_plan (sent) with plan topics maths:integrals, physics:electrostatics, chemistry:organic.  [memory: mem-6]
+   | Loop:
+   |   1. [sense] intent memory_list (rules)
+   |   2. [memory_ops] listed 6 H-MEM records
+   | SQL: (not available: Zetaris federation not wired yet)

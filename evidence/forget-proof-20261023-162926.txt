@@ -1,0 +1,52 @@
+--- step save (pid 17759) ---
+student: demo-tara
+engine: vendor/hmem
+saved: mem-1: Tara (fictional) keeps a purple abacus named Zephyr-77 on her desk and only revises Integrals after using it.
+files under demo-tara/ containing "Zephyr-77": [{"file":"ledger.jsonl","count":1},{"file":"state.json","count":1}]
+
+--- step retrieve (pid 17762) ---
+student: demo-tara
+engine: vendor/hmem
+H-MEM query hits: ["mem-1 (relevance 0.236)"]
+records listed: ["mem-1"]
+files under demo-tara/ containing "Zephyr-77": [{"file":"ledger.jsonl","count":1},{"file":"state.json","count":1}]
+
+--- step isolation (pid 17764) ---
+student: demo-kabir
+engine: vendor/hmem
+H-MEM query hits: []
+records listed: []
+files under demo-kabir/ containing "Zephyr-77": []
+
+--- step forget (pid 17765) ---
+student: demo-tara
+engine: vendor/hmem
+H-MEM query hits: ["mem-1 (relevance 0.236)"]
+records listed: ["mem-1"]
+intent: memory_forget
+reply:
+Done. I deleted 1 memory:
+- Tara (fictional) keeps a purple abacus named Zephyr-77 on her desk and only revises Integrals after using it. [mem-1]
+I won't use it again. My log keeps only the id, the time and "forgotten", not the text.
+files under demo-tara/ containing "Zephyr-77": []
+ledger: {"memoryId":"mem-1","action":"create","actor":"hard-mentor","timestamp":1792753167261,"redacted":true}
+ledger: {"memoryId":"mem-1","action":"read","actor":"hard-mentor","timestamp":1792753167551,"redacted":true}
+ledger: {"memoryId":"mem-1","action":"read","actor":"hard-mentor","timestamp":1792753168142,"redacted":true}
+ledger: {"memoryId":"mem-1","action":"delete","actor":"hard-mentor","timestamp":1792753168154,"details":{"status":"forgotten"}}
+
+--- step verify (pid 17767) ---
+student: demo-tara
+engine: vendor/hmem
+H-MEM query hits: []
+records listed: []
+files under demo-tara/ containing "Zephyr-77": []
+ledger: {"memoryId":"mem-1","action":"create","actor":"hard-mentor","timestamp":1792753167261,"redacted":true}
+ledger: {"memoryId":"mem-1","action":"read","actor":"hard-mentor","timestamp":1792753167551,"redacted":true}
+ledger: {"memoryId":"mem-1","action":"read","actor":"hard-mentor","timestamp":1792753168142,"redacted":true}
+ledger: {"memoryId":"mem-1","action":"delete","actor":"hard-mentor","timestamp":1792753168154,"details":{"status":"forgotten"}}
+
+--- independent grep for the marker under the data root ---
+no file under the data root contains zephyr-77
+files: ./demo-tara/ledger.jsonl ./demo-tara/state.json 
+data root: /var/folders/lf/vwzs5cg50n3635flw0cg4wtw0000gn/T/tmp.NapaDZTQJ4
+evidence: evidence/forget-proof-20261023-162926.txt (this file holds the marker text by design)

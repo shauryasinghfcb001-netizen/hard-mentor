@@ -1,0 +1,38 @@
+Student message: "Can I do Organic Chemistry today instead of Electrostatics? Electrostatics problems feel too hard."
+Planner: rule-planner-v1 (rules); engine: vendor/hmem; synthetic data only
+
+=== MEMORY ON ===
+Reply: No swap today, Riya. You have already moved Electrostatics to Organic Chemistry before, and the gap is not closing. Electrostatics first for 90 min, starting with the easiest NCERT examples. If you get stuck for 10 minutes, message me the problem.
+Plan: physics:electrostatics 90m, maths:integrals 90m
+Decision: refuse_swap (sent)
+Why:
+  - Electrostatics is your top priority: mastery 0.35, marks weight 0.8, priority 0.650  [data_row: fixture:riya_topics#1]
+  - Organic Chemistry ranks lower: priority 0.300  [data_row: fixture:riya_topics#2]
+  - Policy: no swapping a hard task for an easier one without a reason  [rule: tough-love:no-easy-swap]
+  - Pattern on record: Riya skipped her evening Electrostatics session twice this week and switched to Organic Chemistry instead when the problems felt hard.  [memory: mem-1]
+Loop:
+  1. [sense] intent swap_request (rules)
+  2. [recall] ranked 4 topics by (1-mastery)*marks_weight*urgency; top physics:electrostatics
+  3. [recall] H-MEM (vendor/hmem) returned 1: hybrid ranking for "Can I do Organic Chemistry today instead of Electrostatics? Electrostatics problems feel too hard." (domain: general)
+  4. [draft_plan] attempt 1 by rule-planner-v1 (rules): decision refuse_swap
+  5. [check_plan] attempt 1 passed all rules
+  6. [respond] sent decision refuse_swap
+SQL: (not available: Zetaris federation not wired yet)
+
+=== MEMORY OFF ===
+Reply: Electrostatics matters more right now, so do it first for 90 min. Organic Chemistry comes after that.
+Plan: physics:electrostatics 90m, chemistry:organic 45m, maths:integrals 45m
+Decision: compromise (sent)
+Why:
+  - Electrostatics is your top priority: mastery 0.35, marks weight 0.8, priority 0.650  [data_row: fixture:riya_topics#1]
+  - Organic Chemistry ranks lower: priority 0.300  [data_row: fixture:riya_topics#2]
+  - Policy: no swapping a hard task for an easier one without a reason  [rule: tough-love:no-easy-swap]
+Loop:
+  1. [sense] intent swap_request (rules)
+  2. [recall] ranked 4 topics by (1-mastery)*marks_weight*urgency; top physics:electrostatics
+  3. [recall] memory OFF: H-MEM not queried
+  4. [draft_plan] attempt 1 by rule-planner-v1 (rules): decision compromise
+  5. [check_plan] attempt 1 passed all rules
+  6. [respond] sent decision compromise
+SQL: (not available: Zetaris federation not wired yet)
+

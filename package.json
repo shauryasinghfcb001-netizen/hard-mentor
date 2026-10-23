@@ -1,0 +1,35 @@
+{
+  "name": "hard-mentor",
+  "version": "0.1.0",
+  "description": "Hard Mentor: a CBSE Class 11-12 study agent with real H-MEM memory (Open Agent Hackathon 2026, Track 03). Built on the Meterless agentathon-starter.",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "setup": "sh scripts/setup-hmem.sh",
+    "test": "node --import tsx --test test/*.test.ts",
+    "proof:riya": "sh scripts/riya-proof.sh",
+    "notebook": "tsx notebook.ts",
+    "typecheck": "tsc --noEmit -p .",
+    "demo:swap": "sh -c 'R=$(mktemp -d); S=$(date +%Y%m%d-%H%M%S); mkdir -p evidence; node --import tsx scripts/riya-swap-demo.ts $R | tee evidence/riya-swap-demo-$S.txt'",
+    "smoke:model": "sh -c 'mkdir -p evidence; node --import tsx scripts/model-smoke.ts evidence/model-smoke-$(date +%Y%m%d-%H%M%S).jsonl'",
+    "demo:turns": "sh -c 'R=$(mktemp -d); S=$(date +%Y%m%d-%H%M%S); mkdir -p evidence; node --import tsx scripts/riya-turns-demo.ts $R | tee evidence/riya-turns-demo-$S.txt'",
+    "proof:forget": "sh scripts/forget-proof.sh",
+    "demo:csv": "sh -c 'R=$(mktemp -d); S=$(date +%Y%m%d-%H%M%S); mkdir -p evidence; node --import tsx scripts/csv-plan-demo.ts $R | tee evidence/csv-plan-demo-$S.txt'",
+    "demo:journey": "sh -c 'R=$(mktemp -d); S=$(date +%Y%m%d-%H%M%S); mkdir -p evidence; node --import tsx scripts/student-journey.ts $R | tee evidence/student-journey-$S.txt'",
+    "demo:chat": "sh -c 'R=$(mktemp -d); S=$(date +%Y%m%d-%H%M%S); mkdir -p evidence; node --import tsx scripts/chat.ts $R --today 2026-10-23 < scripts/quiz-conversation.txt | tee evidence/quiz-conversation-$S.txt'",
+    "chat": "node --import tsx scripts/chat.ts",
+    "eval:heldout": "sh -c 'S=$(date +%Y%m%d-%H%M%S); mkdir -p evidence; HM_EVAL_OUT=evidence/heldout-eval-$S.json node --import tsx --test eval/heldout.test.ts'",
+    "eval:frozen": "sh -c 'S=$(date +%Y%m%d-%H%M%S); mkdir -p evidence; HM_EVAL_OUT=evidence/frozen-v2-run-$S.json node --import tsx --test eval/frozen-v2.test.ts'"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.1",
+    "tsx": "^4.19.0",
+    "typescript": "6.0.3"
+  },
+  "dependencies": {
+    "@langchain/core": "1.2.17",
+    "@langchain/langgraph": "1.4.21",
+    "zod": "4.6.5"
+  }
+}

@@ -1,0 +1,44 @@
+Student message: "Plan my study for today."
+Data: local CSV via StudyDataSource (synthetic, not Zetaris). Planner: rule-planner-v1 (rules), no model called. Memory: off.
+
+Changed fictional marks in study-records.after-quiz.csv:
+  line 2: physics:electrostatics mastery 0.35 -> 0.88
+  line 4: maths:integrals mastery 0.5 -> 0.25
+
+=== BEFORE (seed CSV) ===
+Source: local CSV study-records.csv (synthetic); rows: physics:electrostatics=0.35 [csv:study-records.csv#2], chemistry:organic=0.6 [csv:study-records.csv#3], maths:integrals=0.5 [csv:study-records.csv#4], physics:optics=0.9 [csv:study-records.csv#5]
+Reply: Today: Electrostatics first for 90 min, then Integrals and Organic Chemistry.
+Plan: physics:electrostatics 90m, maths:integrals 45m, chemistry:organic 45m
+Decision: daily_plan (sent)
+Why:
+  - Electrostatics is your top priority: mastery 0.35, marks weight 0.8, priority 0.650  [data_row: csv:study-records.csv#2]
+Loop:
+  1. [sense] intent plan (rules)
+  2. [recall] ranked 4 topics by (1-mastery)*marks_weight*urgency; top physics:electrostatics
+  3. [recall] memory OFF: H-MEM not queried
+  4. [draft_plan] attempt 1 by rule-planner-v1 (rules): decision daily_plan
+  5. [check_plan] attempt 1 passed all rules
+  6. [respond] sent decision daily_plan
+  7. [write_back] memory OFF: no write-back
+SQL: (not available: Zetaris federation not wired yet)
+
+=== AFTER (changed marks) ===
+Source: local CSV study-records.after-quiz.csv (synthetic); rows: physics:electrostatics=0.88 [csv:study-records.after-quiz.csv#2], chemistry:organic=0.6 [csv:study-records.after-quiz.csv#3], maths:integrals=0.25 [csv:study-records.after-quiz.csv#4], physics:optics=0.9 [csv:study-records.after-quiz.csv#5]
+Reply: Today: Integrals first for 90 min, then Organic Chemistry.
+Plan: maths:integrals 90m, chemistry:organic 90m
+Decision: daily_plan (sent)
+Why:
+  - Integrals is your top priority: mastery 0.25, marks weight 0.7, priority 0.656  [data_row: csv:study-records.after-quiz.csv#4]
+Loop:
+  1. [sense] intent plan (rules)
+  2. [recall] ranked 4 topics by (1-mastery)*marks_weight*urgency; top maths:integrals
+  3. [recall] memory OFF: H-MEM not queried
+  4. [draft_plan] attempt 1 by rule-planner-v1 (rules): decision daily_plan
+  5. [check_plan] attempt 1 passed all rules
+  6. [respond] sent decision daily_plan
+  7. [write_back] memory OFF: no write-back
+SQL: (not available: Zetaris federation not wired yet)
+
+RESULT: plan changed
+  before: physics:electrostatics 90m, maths:integrals 45m, chemistry:organic 45m
+  after:  maths:integrals 90m, chemistry:organic 90m

@@ -1,0 +1,44 @@
+Grounding changes, 2026-10-23. Rule/retrieval only, no model called.
+Before (frozen v2 first run, evidence/frozen-v2-run-20261023-171742.json, and held-out regression evidence/heldout-regression-after-fix-20261023-171716.json): DV06 cited phy12-1-12; DV09 cited phy12-1-12; DV10 cited phy12-1-9; DV30 cited phy12-1-9; SN19 answered from phy12-1-2; 'Why do like charges push each other away?' refused; DV03 cited phy12-1-4.
+After: below.
+
+Q: Give the expression for the force between two point charges
+  ANSWERED from phy12-1-6 (NCERT Physics Part I, Class 12, Ch 1, §1.5, pp. 6-8: Coulomb's law)
+  Why this note: it has the question's word pairs "two charges", "point charges" close together; it contains force, two, point, charges.
+  gate: best phy12-1-6 score 3.29, supports 100% of key terms; states together: "two charges", "point charges"
+  note: The force between two point charges q1 and q2 a distance r apart is proportional to the product of the charges and inversely proportional to r squared: F = k |q1 q2| / r^2, acting along the line joining them. In SI units k = 1/(4 pi epsilon_0), about 9 x 10^9 N m^2 C^-2, and the permittivity of free space epsilon_0 is about 8.854 x 10^-12 C^2 N^-1 m^-2. Like charges repel and unlike charges attract.
+
+Q: Does a third charge change the force between two charges?
+  ANSWERED from phy12-1-7 (NCERT Physics Part I, Class 12, Ch 1, §1.6, pp. 11-12: Forces between multiple charges: superposition)
+  Why this note: it has the question's word pairs "third charge" close together; it contains third, charge, force; not in it: two.
+  gate: best phy12-1-7 score 5.85, supports 74% of key terms; states together: "third charge"
+  note: For several charges, the force on any one charge is the vector sum of the forces from each of the other charges, each found with Coulomb's law as if the others were absent. The presence of other charges does not change an individual pairwise force. This is the principle of superposition.
+
+Q: What is the direction of the electric field due to a positive point charge?
+  ANSWERED from phy12-1-8 (NCERT Physics Part I, Class 12, Ch 1, §1.7, 1.7.1, pp. 14-15: Electric field and the field of a system of charges)
+  Why this note: it has the question's word pairs "electric field", "positive charge", "point charge" close together; it contains direction, electric, field, positive, point, charge.
+  gate: best phy12-1-8 score 7.41, supports 100% of key terms; states together: "electric field", "positive charge", "point charge"
+  note: The electric field at a point is the force per unit positive test charge placed there, E = F/q. For a point source charge Q it has magnitude Q/(4 pi epsilon_0 r^2) and points radially away from a positive charge. The test charge must be very small so it does not disturb the source. The field of a system of charges is the vector sum of the fields of each charge (superposition).
+
+Q: Need the formula for electric field of a line charge
+  ANSWERED from phy12-1-14 (NCERT Physics Part I, Class 12, Ch 1, §1.14, pp. 33-36: Applications of Gauss's law: line, plane sheet, spherical shell)
+  Why this note: it has the question's word pairs "line charge" close together; it contains field, line, charge; not in it: electric.
+  gate: best phy12-1-14 score 3.73, supports 78% of key terms; states together: "line charge"
+  note: Infinitely long straight wire with linear charge density lambda: E = lambda/(2 pi epsilon_0 r), radial, outward for positive lambda. Infinite plane sheet with surface charge density sigma: E = sigma/(2 epsilon_0), normal to the sheet and independent of distance. Uniformly charged thin spherical shell: outside, the field is as if the whole charge sat at the centre; inside, the field is zero at every point.
+
+Q: What is the electric field due to a finite charged rod?
+  REFUSED. gate: question names "finite charged rod" (the notes never say "finite")
+  reply: That question is about "finite charged rod" (the notes never say "finite"). I only have NCERT Class 12 Physics Ch 1, Electric Charges and Fields, and these notes do not cover it, so I won't answer it from them. Check your textbook or ask your teacher. Ask me about charges, Coulomb's law, fields, field lines, flux, dipoles or Gauss's law.
+
+Q: Why do like charges push each other away?
+  ANSWERED from phy12-1-2 (NCERT Physics Part I, Class 12, Ch 1, §1.2, pp. 1-2: Electric charge: two kinds, like repel and unlike attract)
+  Why this note: it has the question's word pairs "like push", "charges push" close together; it contains like, charges, push; not in it: other.
+  gate: best phy12-1-2 score 4.90, supports 59% of key terms; states together: "like push", "charges push"
+  note: Rubbing materials together electrifies them. There are only two kinds of charge: like charges repel and unlike charges attract. The property that separates the two kinds is called the polarity of charge. By convention, the charge on a glass rod or cat's fur is called positive and the charge on a plastic rod or silk is called negative. Rubbing a glass rod with silk moves electrons from the rod to the silk; no new charge is created.
+
+Q: Is charge ever destroyed when two bodies are rubbed together?
+  ANSWERED from phy12-1-2 (NCERT Physics Part I, Class 12, Ch 1, §1.2, pp. 1-2: Electric charge: two kinds, like repel and unlike attract)
+  Why this note: it has the question's word pairs "rubbed together" close together; it contains charge, two, rubbed, together; not in it: destroyed, bodies.
+  gate: best phy12-1-2 score 5.88, supports 55% of key terms; states together: "rubbed together"
+  note: Rubbing materials together electrifies them. There are only two kinds of charge: like charges repel and unlike charges attract. The property that separates the two kinds is called the polarity of charge. By convention, the charge on a glass rod or cat's fur is called positive and the charge on a plastic rod or silk is called negative. Rubbing a glass rod with silk moves electrons from the rod to the silk; no new charge is created.
+

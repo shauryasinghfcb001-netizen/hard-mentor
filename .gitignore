@@ -1,0 +1,8 @@
+node_modules/
+vendor/hmem/
+.notebook/
+data/students/
+.env
+.env.*
+!.env.example
+.DS_Store

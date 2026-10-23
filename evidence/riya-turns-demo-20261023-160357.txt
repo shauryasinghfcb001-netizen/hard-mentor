@@ -1,0 +1,87 @@
+Planner: rule-planner-v1 (rules); doubts: extractive; engine: vendor/hmem; synthetic data only
+
+=== Turn 1: "Can I do Organic Chemistry today instead of Electrostatics? Electrostatics problems feel too hard." ===
+Reply: No swap today, Riya. You have already moved Electrostatics to Organic Chemistry before, and the gap is not closing. Electrostatics first for 90 min, starting with the easiest NCERT examples. If you get stuck for 10 minutes, message me the problem.
+Decision: refuse_swap (sent)
+Why:
+  - Electrostatics is your top priority: mastery 0.35, marks weight 0.8, priority 0.650  [data_row: fixture:riya_topics#1]
+  - Organic Chemistry ranks lower: priority 0.300  [data_row: fixture:riya_topics#2]
+  - Policy: no swapping a hard task for an easier one without a reason  [rule: tough-love:no-easy-swap]
+  - Pattern on record: Riya skipped her evening Electrostatics session twice this week and switched to Organic Chemistry instead when the problems felt hard.  [memory: mem-1]
+Loop:
+  1. [sense] intent swap_request (rules)
+  2. [recall] ranked 4 topics by (1-mastery)*marks_weight*urgency; top physics:electrostatics
+  3. [recall] H-MEM (vendor/hmem) returned 1: hybrid ranking for "Can I do Organic Chemistry today instead of Electrostatics? Electrostatics problems feel too hard." (domain: general)
+  4. [draft_plan] attempt 1 by rule-planner-v1 (rules): decision refuse_swap
+  5. [check_plan] attempt 1 passed all rules
+  6. [respond] sent decision refuse_swap
+  7. [write_back] H-MEM episode mem-2 written (decision summary, not the raw message)
+SQL: (not available: Zetaris federation not wired yet)
+
+=== Turn 2: "What do you remember about me?" ===
+Reply: Here is everything I remember about you (2):
+- Riya skipped her evening Electrostatics session twice this week and switched to Organic Chemistry instead when the problems felt hard. [mem-1]
+- On 2026-10-23 the student sent a swap request; the mentor decided refuse_swap (sent) with plan topics physics:electrostatics, maths:integrals. [mem-2]
+Say "forget <words>" to delete any of it.
+Decision: memory_list (memory_op)
+Why:
+  - Stored: Riya skipped her evening Electrostatics session twice this week and switched to Organic Chemistry instead when the problems felt hard.  [memory: mem-1]
+  - Stored: On 2026-10-23 the student sent a swap request; the mentor decided refuse_swap (sent) with plan topics physics:electrostatics, maths:integrals.  [memory: mem-2]
+Loop:
+  1. [sense] intent memory_list (rules)
+  2. [memory_ops] listed 2 H-MEM records
+SQL: (not available: Zetaris federation not wired yet)
+
+=== Turn 3: "Forget that I skipped Electrostatics." ===
+Reply: Done. I deleted 1 memory:
+- Riya skipped her evening Electrostatics session twice this week and switched to Organic Chemistry instead when the problems felt hard. [mem-1]
+I won't use it again. An audit log entry of the deletion remains.
+Decision: memory_forget (memory_op)
+Why:
+  - Deleted: Riya skipped her evening Electrostatics session twice this week and switched to Organic Chemistry instead when the problems felt hard.  [memory: mem-1]
+Loop:
+  1. [sense] intent memory_forget (rules)
+  2. [memory_ops] forget "that I skipped Electrostatics": deleted 1 H-MEM records
+SQL: (not available: Zetaris federation not wired yet)
+
+=== Turn 4: "Can I do Organic Chemistry today instead of Electrostatics? Electrostatics problems feel too hard." ===
+Reply: Electrostatics matters more right now, so do it first for 90 min. Organic Chemistry comes after that.
+Decision: compromise (sent)
+Why:
+  - Electrostatics is your top priority: mastery 0.35, marks weight 0.8, priority 0.650  [data_row: fixture:riya_topics#1]
+  - Organic Chemistry ranks lower: priority 0.300  [data_row: fixture:riya_topics#2]
+  - Policy: no swapping a hard task for an easier one without a reason  [rule: tough-love:no-easy-swap]
+Loop:
+  1. [sense] intent swap_request (rules)
+  2. [recall] ranked 4 topics by (1-mastery)*marks_weight*urgency; top physics:electrostatics
+  3. [recall] H-MEM (vendor/hmem) returned 0: hybrid ranking for "Can I do Organic Chemistry today instead of Electrostatics? Electrostatics problems feel too hard." (domain: general)
+  4. [draft_plan] attempt 1 by rule-planner-v1 (rules): decision compromise
+  5. [check_plan] attempt 1 passed all rules
+  6. [respond] sent decision compromise
+  7. [write_back] H-MEM episode mem-3 written (decision summary, not the raw message)
+SQL: (not available: Zetaris federation not wired yet)
+
+=== Turn 5: "What is Coulomb's law?" ===
+Reply: The force between two point charges q1 and q2 a distance r apart is proportional to the product of the charges and inversely proportional to r squared: F = k |q1 q2| / r^2, acting along the line joining them. In SI units k = 1/(4 pi epsilon_0), about 9 x 10^9 N m^2 C^-2, and the permittivity of free space epsilon_0 is about 8.854 x 10^-12 C^2 N^-1 m^-2. Like charges repel and unlike charges attract.
+
+Source: NCERT Physics Part I, Class 12, Ch 1, §1.5, pp. 6-8
+Decision: doubt_extractive (doubt_answered)
+Why:
+  - Grounded in NCERT note phy12-1-6, pages 6, 7, 8  [ncert: phy12-1-6]
+Loop:
+  1. [sense] intent doubt (rules)
+  2. [answer_doubt] retrieval: best phy12-1-6 score 4.19, covers 2/2 words
+  3. [answer_doubt] extractive answer by bm25-extractive
+SQL: (not available: Zetaris federation not wired yet)
+
+=== Turn 6: "What is Ohm's law?" ===
+Reply: I can only answer from NCERT Electric Charges and Fields (Class 12 Physics, Ch 1) right now, and this question is not covered there. Ask your teacher, or ask me about charges, Coulomb's law, fields, flux, dipoles or Gauss's law.
+Decision: doubt_refusal (doubt_refused)
+Why:
+  - Out of syllabus: best chunk covers 1/2 question words  [rule: out-of-syllabus]
+Loop:
+  1. [sense] intent doubt (rules)
+  2. [answer_doubt] retrieval: best chunk covers 1/2 question words
+  3. [answer_doubt] refusal answer by out-of-syllabus gate
+SQL: (not available: Zetaris federation not wired yet)
+
