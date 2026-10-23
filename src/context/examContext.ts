@@ -62,11 +62,11 @@ export interface CheckedFact extends ExamFact {
 export interface ExamContext {
   goal: StudentGoal;
   exam: { id: string; name: string; body: string; country: string };
-  resolvedBy: "single match" | "named in goal" | "student choice";
+  resolvedBy: "single match" | "named in goal" | "student choice" | "student-stated, not researched";
   facts: CheckedFact[];
   examDate: { value: string; origin: "verified-official" | "student-stated" } | null;
   corpora: string[];
-  research: { source: string; kind: "fixture" | "web"; ranAt: string; candidates: number };
+  research: { source: string; kind: "fixture" | "web" | "none"; ranAt: string; candidates: number };
 }
 
 export type ContextStep =
@@ -151,12 +151,30 @@ export async function researchExam(source: ResearchSource, goal: StudentGoal, op
   };
 }
 
+/**
+ * For an exam the research source could not find. Nothing about the exam is
+ * claimed: no facts, no notes, only what the student said. A later research
+ * step (a correction of the exam, or a web source) can replace it.
+ */
+export function unresearchedContext(goal: StudentGoal, ranAt: string): ExamContext {
+  return {
+    goal,
+    exam: { id: "unresearched", name: goal.exam, body: "not researched", country: goal.country },
+    resolvedBy: "student-stated, not researched",
+    facts: [],
+    examDate: goal.statedExamDate ? { value: goal.statedExamDate, origin: "student-stated" } : null,
+    corpora: [],
+    research: { source: "none", kind: "none", ranAt, candidates: 0 },
+  };
+}
+
 export function daysUntil(date: string, today: string): number {
   return Math.max(1, Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${today.slice(0, 10)}T00:00:00Z`)) / 86_400_000));
 }
 
 /** One line for the graph trace and the why card. */
 export function describeContext(ctx: ExamContext): string {
+  if (ctx.research.kind === "none") return `exam context: ${ctx.exam.name} NOT researched (student-stated only); exam date ${ctx.examDate ? `${ctx.examDate.value} (${ctx.examDate.origin})` : "unknown"}`;
   const verified = ctx.facts.filter((f) => f.status === "verified-official").length;
   const date = ctx.examDate ? `${ctx.examDate.value} (${ctx.examDate.origin})` : "unknown";
   return (

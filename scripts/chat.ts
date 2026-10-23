@@ -22,6 +22,7 @@ import { RIYA } from "../src/synthetic/riya.ts";
 
 const PROFILES: Record<string, StudentProfile> = {
   riya: { studentId: RIYA.studentId, name: RIYA.name, hoursPerDay: RIYA.dailyStudyHours },
+  meera: { studentId: "meera", name: "Meera (fictional)", hoursPerDay: 2 },
   kabir: { studentId: "kabir", name: "Kabir (fictional)", hoursPerDay: 2 },
 };
 

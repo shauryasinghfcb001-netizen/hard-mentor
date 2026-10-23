@@ -7,14 +7,14 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { daysUntil, researchExam, type ExamContext, type ResearchSource, type StudentGoal } from "../context/examContext.ts";
+import { daysUntil, researchExam, unresearchedContext, type ExamContext, type ResearchSource, type StudentGoal } from "../context/examContext.ts";
 import { detectDistress } from "../core/distress.ts";
 import { rankTopics } from "../core/priority.ts";
 import { csvStudyData } from "../data/studyData.ts";
 import { studentDir, type StudentMemory } from "../memory/studentMemory.ts";
 import type { ActiveQuiz } from "../quiz/quizTurn.ts";
 import type { Corpus, Retriever } from "../rag/ncert.ts";
-import { runMentor, type MentorState, type StudentContext } from "./graph.ts";
+import { classifyIntent, runMentor, type MentorState, type StudentContext } from "./graph.ts";
 import type { Planner } from "./planner.ts";
 import { buildWhyCard, type WhyCard } from "./whyCard.ts";
 
@@ -32,6 +32,8 @@ export interface Session {
   intake: { step: IntakeStep; goal: Partial<StudentGoal> };
   exam: ExamContext | null;
   activeQuiz: ActiveQuiz | null;
+  /** the student turned memory off: nothing is recalled or written, stored memories are kept */
+  memoryOff?: boolean;
   lastPlan: { at: string; top: string; topics: Record<string, { name: string; mastery: number; priority: number }> } | null;
 }
 
@@ -93,6 +95,7 @@ export function parseDate(text: string): string | null {
   return date.toISOString().slice(0, 10);
 }
 
+const NO_RESEARCH = /\b(continue|proceed|go\s+ahead|carry\s+on)\s+without\s+(the\s+)?(research|lookup|looking\s+it\s+up)\b/i;
 const UNSURE = /\b(not\s+sure|don'?t\s+know|no\s+idea|unknown|skip|later)\b/i;
 
 function strip(text: string, lead: RegExp): string {
@@ -100,6 +103,14 @@ function strip(text: string, lead: RegExp): string {
 }
 
 function describeResolved(ctx: ExamContext, today: string): string {
+  if (ctx.research.kind === "none") {
+    return [
+      `I have not researched ${ctx.exam.name} (${ctx.exam.country}): I can't look it up yet, and I won't guess facts about it. I have no syllabus, weightage or official dates for it.`,
+      ctx.examDate ? `I'll use your exam date ${ctx.examDate.value}, which is yours, not an official one (${daysUntil(ctx.examDate.value, today)} days from ${today}).` : `No exam date yet: I'll assume ${ASSUMED_DAYS_TO_EXAM} days for urgency until you tell me.`,
+      `Your plan is ranked from your saved study records and the marks weights stored in them, not from anything I researched about ${ctx.exam.name}. I have no notes to quiz you from for it.`,
+      `Say "plan my study for today". You can say "change my exam to <name>" later to try the lookup again.`,
+    ].join("\n");
+  }
   const mock = ctx.research.kind === "fixture";
   const lines = [
     `got it: ${ctx.exam.name} (${ctx.exam.body}), ${ctx.resolvedBy === "student choice" ? "as you chose" : ctx.resolvedBy}.`,
@@ -121,6 +132,11 @@ async function intakeTurn(env: ConversationEnv, profile: StudentProfile, s: Sess
   const g = s.intake.goal;
   switch (s.intake.step) {
     case "exam":
+      if (g.exam && g.country && g.goal && NO_RESEARCH.test(message)) {
+        s.exam = unresearchedContext(g as StudentGoal, env.now());
+        s.stage = "ready";
+        return `${first}, ${describeResolved(s.exam, env.now().slice(0, 10))}`;
+      }
       g.exam = strip(message, /^(i'?m|i\s+am)\s+(preparing|studying|appearing)\s+for\s+|^(my\s+exam\s+is|exam:?)\s*/i);
       s.intake.step = "country";
       return `Thanks. Which country is ${g.exam} in?`;
@@ -155,7 +171,7 @@ async function research(env: ConversationEnv, s: Session, first: string, choice?
   }
   if (step.status === "not_found") {
     if (s.intake.step !== "choice") s.intake.step = "exam";
-    return `${step.reply} ${s.intake.step === "exam" ? "You can name a different exam." : "Please pick one of the options above."}`;
+    return `${step.reply} ${s.intake.step === "exam" ? 'You can name a different exam, or say "continue without research" and I will plan from your date and goal only, without any exam facts.' : "Please pick one of the options above."}`;
   }
   s.exam = step.context;
   s.stage = "ready";
@@ -183,6 +199,18 @@ export function detectCorrection(message: string): Correction | null {
   if (goal) return { field: "goal", value: goal };
   if (/\b(date|exam|test|paper|moved|postponed|preponed|rescheduled?)\b/i.test(message) && (/\bdate\b/i.test(message) || parseDate(message) || /\d{1,4}[-/]\d{1,2}[-/]\d{1,4}/.test(message)))
     return { field: "date", value: message };
+  return null;
+}
+
+const MEMORY_OFF = /\b(turn|switch|set)\b.{0,20}\bmemory\b.{0,12}\boff\b|\bmemory\s+off\b|\b(stop|don'?t|do\s+not)\s+(remembering|remember|saving|storing)\s+(me|anything|things|my)\b/i;
+const MEMORY_ON = /\b(turn|switch|set)\b.{0,20}\bmemory\b.{0,12}\bon\b|\bmemory\s+on\b|\byou\s+can\s+(start\s+)?remember(ing)?\s+me\b/i;
+const MEMORY_STATUS = /\bis\s+(my\s+|your\s+)?memory\s+(on|off)\b/i;
+
+/** "turn memory off / on" and "is memory on?"; null for anything else. */
+export function detectMemoryControl(message: string): "off" | "on" | "status" | null {
+  if (MEMORY_STATUS.test(message)) return "status";
+  if (MEMORY_OFF.test(message)) return "off";
+  if (MEMORY_ON.test(message)) return "on";
   return null;
 }
 
@@ -269,7 +297,9 @@ export async function converse(env: ConversationEnv, profile: StudentProfile, me
   let s = loadSession(env, profile.studentId);
   const isNew = !s;
   s ??= { studentId: profile.studentId, stage: "intake", intake: { step: "exam", goal: {} }, exam: null, activeQuiz: null, lastPlan: null };
-  const memory = await env.memoryFor(profile.studentId);
+  const stored = await env.memoryFor(profile.studentId);
+  // Memory off: nothing is recalled or written. Stored memories stay and can still be listed or forgotten.
+  const memory = s.memoryOff ? null : stored;
   const deps = {
     planner: env.planner,
     memory,
@@ -290,6 +320,17 @@ export async function converse(env: ConversationEnv, profile: StudentProfile, me
     const state = await runMentor(deps, { ...(await student()), topics: [] }, message);
     saveSession(env, s);
     return { reply: state.reply, handledBy: "graph", state, why: buildWhyCard(state), session: s };
+  }
+  const control = !isNew && !detectDistress(message).distress ? detectMemoryControl(message) : null;
+  if (control) {
+    if (control !== "status") s.memoryOff = control === "off";
+    saveSession(env, s);
+    const reply = control === "status"
+      ? s.memoryOff ? "Memory is off for you. I am not recalling or saving anything new. Memories stored earlier are kept; say \"what do you remember\" to see them or \"forget <words>\" to delete them." : "Memory is on. I save a short summary of each plan and quiz result, never your typed answers."
+      : control === "off"
+        ? "Memory is off. I will not recall or save anything new about you. Memories stored earlier are kept, not deleted; say \"what do you remember\" to see them or \"forget <words>\" to delete them. Say \"turn memory on\" to resume."
+        : "Memory is on again. I will recall and save short summaries of plans and quiz results, never your typed answers.";
+    return { reply, handledBy: "intake", state: null, why: null, session: s };
   }
   if (s.stage === "intake") {
     const first = profile.name.replace(/\s*\(fictional\)$/, "");
@@ -319,7 +360,8 @@ export async function converse(env: ConversationEnv, profile: StudentProfile, me
     return { reply: [applied.note, explain, planned.reply].filter(Boolean).join("\n"), handledBy: "graph", state: planned, why: buildWhyCard(planned), session: s };
   }
 
-  const state = await runMentor(deps, await student(), message, { activeQuiz: s.activeQuiz });
+  const asksMemory = s.memoryOff && ["memory_list", "memory_forget"].includes(classifyIntent(message, null, !!s.activeQuiz).intent);
+  const state = await runMentor(asksMemory ? { ...deps, memory: stored } : deps, await student(), message, { activeQuiz: s.activeQuiz });
   s.activeQuiz = state.activeQuiz ?? null;
   let reply = state.reply;
   if (state.draft && (state.outcome === "sent" || state.outcome === "fallback")) {
