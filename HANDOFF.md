@@ -80,7 +80,7 @@ Reference output: `evidence/quiz-conversation-20261023-201802.txt`. The `-201747
 
 ## Next incomplete task
 
-Next unblocked: let a student update an intake answer (for example the exam date) after onboarding, in `src/agent/conversation.ts`, with tests.
+Done (uncommitted, 2026-10-23): a student can correct exam date, exam, country or goal after onboarding (`detectCorrection` / `applyCorrection` in `src/agent/conversation.ts`, `test/correction.test.ts`). Rule-based; fixture exam list only. Next unblocked: none; the items below need approvals or content.
 
 Then:
 - More note corpora beyond Ch 1, so topics other than Electrostatics can be quizzed.

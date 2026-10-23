@@ -9,6 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { daysUntil, researchExam, type ExamContext, type ResearchSource, type StudentGoal } from "../context/examContext.ts";
 import { detectDistress } from "../core/distress.ts";
+import { rankTopics } from "../core/priority.ts";
 import { csvStudyData } from "../data/studyData.ts";
 import { studentDir, type StudentMemory } from "../memory/studentMemory.ts";
 import type { ActiveQuiz } from "../quiz/quizTurn.ts";
@@ -161,6 +162,87 @@ async function research(env: ConversationEnv, s: Session, first: string, choice?
   return `${first}, ${describeResolved(step.context, env.now().slice(0, 10))}`;
 }
 
+type Correction = { field: "date" | "exam" | "country" | "goal"; value: string };
+
+const CORRECTION_CUE = /\b(actually|correction|wrong|change[ds]?|update[ds]?|correct|moved|postponed|preponed|rescheduled?|fix)\b/i;
+
+/**
+ * A student correcting an intake answer after onboarding. Needs a correction cue
+ * AND a named field, so quiz answers and ordinary questions are not caught.
+ * `value` is raw text for date (parsed later, so a bad date can be refused) and
+ * the new wording for the other fields.
+ */
+export function detectCorrection(message: string): Correction | null {
+  if (!CORRECTION_CUE.test(message)) return null;
+  const to = (re: RegExp) => message.match(re)?.[1]?.trim().replace(/[.!]+$/, "") ?? null;
+  const exam = to(/\b(?:change|switch|update|correct)\s+(?:my\s+|the\s+)?exam\s+(?:to|as)\s+(.+)$/i) ?? to(/\bexam\s+is\s+(?:actually|now)\s+(?!on\b)(.+)$/i);
+  if (exam) return { field: "exam", value: exam };
+  const country = to(/\bcountry\s+(?:is\s+|to\s+|as\s+)(?:actually\s+)?(.+)$/i);
+  if (country) return { field: "country", value: country };
+  const goal = to(/\bgoal\s+(?:is\s+|to\s+|as\s+)(?:actually\s+)?(.+)$/i);
+  if (goal) return { field: "goal", value: goal };
+  if (/\b(date|exam|test|paper|moved|postponed|preponed|rescheduled?)\b/i.test(message) && (/\bdate\b/i.test(message) || parseDate(message) || /\d{1,4}[-/]\d{1,2}[-/]\d{1,4}/.test(message)))
+    return { field: "date", value: message };
+  return null;
+}
+
+function daysFor(s: Session, now: string): number {
+  return s.exam?.examDate ? daysUntil(s.exam.examDate.value, now) : ASSUMED_DAYS_TO_EXAM;
+}
+
+/**
+ * Applies a correction to the session only (never the study records, quiz log or
+ * memory). Returns what to tell the student, and whether the plan inputs changed.
+ */
+async function applyCorrection(env: ConversationEnv, s: Session, c: Correction): Promise<{ note: string; changed: boolean }> {
+  const exam = s.exam!;
+  const today = env.now().slice(0, 10);
+  if (c.field === "goal") {
+    exam.goal.goal = c.value;
+    return { note: `Updated your goal to "${c.value}". Your plan ranking does not use the goal, so it does not change.`, changed: false };
+  }
+  if (c.field === "date") {
+    const d = parseDate(c.value);
+    if (!d) return { note: `I couldn't read an exact date in that, so I changed nothing. Please give it like 2027-03-01.`, changed: false };
+    if (d <= today) return { note: `${d} is not in the future, so I kept your exam date as ${exam.examDate?.value ?? "not set"}. Please check the date.`, changed: false };
+    if (exam.examDate?.origin === "verified-official") return { note: `The exam date ${exam.examDate.value} comes from an official source, so I did not replace it with yours (${d}).`, changed: false };
+    if (exam.examDate?.value === d) return { note: `Your exam date is already ${d}; nothing changed.`, changed: false };
+    exam.examDate = { value: d, origin: "student-stated" };
+    exam.goal.statedExamDate = d;
+    return { note: `Updated your exam date to ${d} (your date, not an official one).`, changed: true };
+  }
+  if (s.activeQuiz) return { note: `You have a quiz open and it uses notes for ${exam.exam.name}. Finish it or say "cancel the quiz" first, then change your ${c.field}. Nothing changed.`, changed: false };
+  const goal = { ...exam.goal, [c.field]: c.value };
+  const step = await researchExam(env.research, goal, { ranAt: env.now() });
+  if (step.status === "ambiguous") return { note: `${step.question} ${step.options.map((o) => o.name).join("; ")}. Nothing changed; say "change my exam to <name>".`, changed: false };
+  if (step.status === "not_found") return { note: `${step.reply} Nothing changed: you are still on ${exam.exam.name}.`, changed: false };
+  const next = step.context;
+  const kept = exam.corpora.filter((x) => !next.corpora.includes(x));
+  s.exam = next;
+  return {
+    note: [
+      `Updated your ${c.field}: you are now on ${next.exam.name} (${next.exam.body}). What I know about it comes from the same small offline list, so it is unverified.`,
+      kept.length
+        ? `The notes I used for ${exam.exam.name} (${kept.join(", ")}) do not apply to ${next.exam.name}. Your saved results and quiz history are kept as they were and are NOT relabeled for the new exam. I have no syllabus for it, so I can't tell which saved topics still apply.`
+        : `Your saved results and quiz history are kept as they were.`,
+      `Local notes I can quiz you from for ${next.exam.name}: ${next.corpora.length ? next.corpora.join(", ") : "none"}.`,
+    ].join("\n"),
+    changed: true,
+  };
+}
+
+function dateChange(s: Session, before: { days: number; top: string; topics: NonNullable<Session["lastPlan"]>["topics"] } | null, state: MentorState, after: number): string {
+  const u = (d: number) => 1 + 30 / Math.max(d, 1);
+  const lines = [`Why the plan numbers moved: days to exam ${before ? before.days : "?"} -> ${after}; urgency 1 + 30/days = ${before ? u(before.days).toFixed(3) : "?"} -> ${u(after).toFixed(3)}. Mastery and quiz results are unchanged.`];
+  for (const t of state.ranked) {
+    const p = before?.topics[t.topicId];
+    lines.push(`- ${t.name}: priority ${p ? p.priority.toFixed(3) : "n/a"} -> ${t.priority.toFixed(3)}`);
+  }
+  const top = state.draft?.blocks[0]?.topicId;
+  if (before && top) lines.push(top === before.top ? `Top topic unchanged (${state.ranked.find((t) => t.topicId === top)?.name}): urgency scales every topic equally, so a new date changes the priority numbers, not their order.` : `Top topic changed.`);
+  return lines.join("\n");
+}
+
 function planChange(s: Session, state: MentorState): string | null {
   const prev = s.lastPlan;
   const top = state.draft?.blocks[0]?.topicId;
@@ -216,6 +298,25 @@ export async function converse(env: ConversationEnv, profile: StudentProfile, me
       : await intakeTurn(env, profile, s, message);
     saveSession(env, s);
     return { reply, handledBy: "intake", state: null, why: null, session: s };
+  }
+
+  const correction = detectCorrection(message);
+  if (correction && !detectDistress(message).distress) {
+    // Plan numbers before the change, from the session's last plan or a fresh ranking of the unchanged records.
+    const beforeDays = daysFor(s, env.now());
+    const beforeTopics = s.lastPlan?.topics ?? Object.fromEntries(rankTopics((await student()).topics, beforeDays).map((t) => [t.topicId, { name: t.name, mastery: t.mastery, priority: t.priority }]));
+    const before = { days: beforeDays, top: s.lastPlan?.top ?? "", topics: beforeTopics };
+    const applied = await applyCorrection(env, s, correction);
+    if (!applied.changed) {
+      saveSession(env, s);
+      return { reply: applied.note, handledBy: "intake", state: null, why: null, session: s };
+    }
+    const planned = await runMentor(deps, await student(), "Plan my study for today.", { activeQuiz: s.activeQuiz });
+    const after = daysFor(s, env.now());
+    const explain = correction.field === "date" ? dateChange(s, before, planned, after) : null;
+    if (planned.draft) s.lastPlan = { at: env.now(), top: planned.draft.blocks[0]?.topicId ?? "", topics: Object.fromEntries(planned.ranked.map((t) => [t.topicId, { name: t.name, mastery: t.mastery, priority: t.priority }])) };
+    saveSession(env, s);
+    return { reply: [applied.note, explain, planned.reply].filter(Boolean).join("\n"), handledBy: "graph", state: planned, why: buildWhyCard(planned), session: s };
   }
 
   const state = await runMentor(deps, await student(), message, { activeQuiz: s.activeQuiz });
