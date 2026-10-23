@@ -80,7 +80,7 @@ Reference output: `evidence/quiz-conversation-20261023-201802.txt`. The `-201747
 
 ## Next incomplete task
 
-Done (uncommitted, 2026-10-23): a student can correct exam date, exam, country or goal after onboarding (`detectCorrection` / `applyCorrection` in `src/agent/conversation.ts`, `test/correction.test.ts`). Rule-based; fixture exam list only. Next unblocked: none; the items below need approvals or content.
+Done and committed locally (1d896cf, 8f36f93, 8fa391c; not pushed): intake corrections after onboarding; conversational "turn memory off/on" (stored memories kept, still listable and forgettable); "continue without research" for exams the offline list lacks (no exam facts claimed); honest reply for a student with no study records. All rule-based; fixture exam list only. Tests: 90 pass. Next unblocked: none; live exam research (needs network approval) is the next dependency.
 
 Then:
 - More note corpora beyond Ch 1, so topics other than Electrostatics can be quizzed.
