@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { daysUntil, researchExam, unresearchedContext, type ExamContext, type ResearchSource, type StudentGoal } from "../context/examContext.ts";
 import { detectDistress } from "../core/distress.ts";
-import { rankTopics } from "../core/priority.ts";
+import { rankTopics, urgency } from "../core/priority.ts";
 import { csvStudyData } from "../data/studyData.ts";
 import { studentDir, type StudentMemory } from "../memory/studentMemory.ts";
 import type { ActiveQuiz } from "../quiz/quizTurn.ts";
@@ -190,6 +190,8 @@ const CORRECTION_CUE = /\b(actually|correction|wrong|change[ds]?|update[ds]?|cor
  */
 export function detectCorrection(message: string): Correction | null {
   if (!CORRECTION_CUE.test(message)) return null;
+  // A question about a topic ("What is the date of ...? I think it was wrong") is not a correction.
+  if (/^\s*(what|why|how|which|when|who|is|are|does|do|can|could)\b/i.test(message) && /\?\s*$|\?\s/.test(message)) return null;
   const to = (re: RegExp) => message.match(re)?.[1]?.trim().replace(/[.!]+$/, "") ?? null;
   const exam = to(/\b(?:change|switch|update|correct)\s+(?:my\s+|the\s+)?exam\s+(?:to|as)\s+(.+)$/i) ?? to(/\bexam\s+is\s+(?:actually|now)\s+(?!on\b)(.+)$/i);
   if (exam) return { field: "exam", value: exam };
@@ -197,14 +199,16 @@ export function detectCorrection(message: string): Correction | null {
   if (country) return { field: "country", value: country };
   const goal = to(/\bgoal\s+(?:is\s+|to\s+|as\s+)(?:actually\s+)?(.+)$/i);
   if (goal) return { field: "goal", value: goal };
-  if (/\b(date|exam|test|paper|moved|postponed|preponed|rescheduled?)\b/i.test(message) && (/\bdate\b/i.test(message) || parseDate(message) || /\d{1,4}[-/]\d{1,2}[-/]\d{1,4}/.test(message)))
+  if (/\b(exam|test|paper|boards?)\b/i.test(message) && (/\b(date|moved|postponed|preponed|rescheduled?)\b/i.test(message) || parseDate(message) || /\d{1,4}[-/]\d{1,2}[-/]\d{1,4}/.test(message)))
     return { field: "date", value: message };
   return null;
 }
 
-const MEMORY_OFF = /\b(turn|switch|set)\b.{0,20}\bmemory\b.{0,12}\boff\b|\bmemory\s+off\b|\b(stop|don'?t|do\s+not)\s+(remembering|remember|saving|storing)\s+(me|anything|things|my)\b/i;
-const MEMORY_ON = /\b(turn|switch|set)\b.{0,20}\bmemory\b.{0,12}\bon\b|\bmemory\s+on\b|\byou\s+can\s+(start\s+)?remember(ing)?\s+me\b/i;
-const MEMORY_STATUS = /\bis\s+(my\s+|your\s+)?memory\s+(on|off)\b/i;
+const LEAD = String.raw`^\s*(please\s+)?(can\s+you\s+|could\s+you\s+)?`;
+const TAIL = String.raw`\s*(please)?\s*[.!?]*\s*$`;
+const MEMORY_OFF = new RegExp(`${LEAD}((turn|switch|set)\\s+(my\\s+|the\\s+)?memory\\s+(to\\s+)?off|memory\\s+off|(stop|quit)\\s+(remembering|saving|storing)\\s+(me|anything|things|about\\s+me))${TAIL}`, "i");
+const MEMORY_ON = new RegExp(`${LEAD}((turn|switch|set)\\s+(my\\s+|the\\s+)?memory\\s+(to\\s+)?on|memory\\s+on|you\\s+can\\s+(start\\s+)?remember(ing)?\\s+me)${TAIL}`, "i");
+const MEMORY_STATUS = /^\s*is\s+(my\s+|your\s+)?memory\s+(on|off)\s*\??\s*$/i;
 
 /** "turn memory off / on" and "is memory on?"; null for anything else. */
 export function detectMemoryControl(message: string): "off" | "on" | "status" | null {
@@ -260,7 +264,7 @@ async function applyCorrection(env: ConversationEnv, s: Session, c: Correction):
 }
 
 function dateChange(s: Session, before: { days: number; top: string; topics: NonNullable<Session["lastPlan"]>["topics"] } | null, state: MentorState, after: number): string {
-  const u = (d: number) => 1 + 30 / Math.max(d, 1);
+  const u = urgency;
   const lines = [`Why the plan numbers moved: days to exam ${before ? before.days : "?"} -> ${after}; urgency 1 + 30/days = ${before ? u(before.days).toFixed(3) : "?"} -> ${u(after).toFixed(3)}. Mastery and quiz results are unchanged.`];
   for (const t of state.ranked) {
     const p = before?.topics[t.topicId];
@@ -346,13 +350,14 @@ export async function converse(env: ConversationEnv, profile: StudentProfile, me
     // Plan numbers before the change, from the session's last plan or a fresh ranking of the unchanged records.
     const beforeDays = daysFor(s, env.now());
     const beforeTopics = s.lastPlan?.topics ?? Object.fromEntries(rankTopics((await student()).topics, beforeDays).map((t) => [t.topicId, { name: t.name, mastery: t.mastery, priority: t.priority }]));
-    const before = { days: beforeDays, top: s.lastPlan?.top ?? "", topics: beforeTopics };
+    const topOf = (t: typeof beforeTopics) => Object.entries(t).sort((a, b) => b[1].priority - a[1].priority)[0]?.[0] ?? "";
+    const before = { days: beforeDays, top: s.lastPlan?.top || topOf(beforeTopics), topics: beforeTopics };
     const applied = await applyCorrection(env, s, correction);
     if (!applied.changed) {
       saveSession(env, s);
       return { reply: applied.note, handledBy: "intake", state: null, why: null, session: s };
     }
-    const planned = await runMentor(deps, await student(), "Plan my study for today.", { activeQuiz: s.activeQuiz });
+    const planned = await runMentor(deps, await student(), "Plan my study for today.", { activeQuiz: null });
     const after = daysFor(s, env.now());
     const explain = correction.field === "date" ? dateChange(s, before, planned, after) : null;
     if (planned.draft) s.lastPlan = { at: env.now(), top: planned.draft.blocks[0]?.topicId ?? "", topics: Object.fromEntries(planned.ranked.map((t) => [t.topicId, { name: t.name, mastery: t.mastery, priority: t.priority }])) };

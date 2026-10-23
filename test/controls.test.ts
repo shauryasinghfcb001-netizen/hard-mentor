@@ -167,3 +167,27 @@ test("a student with no study records is told so, no plan is guessed, and nothin
   assert.equal(count("meera"), 0, "no episode for a plan that was not made");
   void env;
 });
+
+test("pass-2 regressions: date correction with a quiz open, toggle and correction wording, first-plan explanation", async () => {
+  const { env, say, count } = setup();
+  await onboard(say);
+  // 1. open quiz + date correction: no crash, quiz stays open, new plan, exam date saved
+  await say("quiz me");
+  const r = await say("Actually my exam date is 2027-04-01");
+  assert.match(r.reply, /Updated your exam date to 2027-04-01/);
+  assert.ok(loadSession(env, "riya")!.activeQuiz, "quiz still open");
+  // 2. ordinary sentences and quiz answers do not flip memory
+  for (const m of ["I don't remember anything about flux", "stop saving me time, plan", "I think memory off is a good idea? A"]) {
+    await say(m);
+    assert.equal(loadSession(env, "riya")!.memoryOff, undefined, m);
+  }
+  await say("cancel the quiz");
+  // 3. first correction with no earlier plan: order unchanged, so it must not say the top topic changed
+  const r3 = await say("Actually my exam date is 2027-03-01");
+  assert.match(r3.reply, /Top topic unchanged/);
+  assert.doesNotMatch(r3.reply, /Top topic changed/);
+  // 4. a topic question is not a correction
+  const r4 = await say("What is the date of Coulomb's law publication? I think it was wrong");
+  assert.notEqual(r4.handledBy, "intake");
+  void count;
+});
