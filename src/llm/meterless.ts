@@ -89,6 +89,15 @@ export function parseConnectLink(text: string): ConnectLink | null {
   return { baseURL: `${u.protocol}//${u.host}/v1`, key, model, app };
 }
 
+/** Contract: models are routing ids (meterless/*). Unknown meterless/* ids pass; other names are refused, never substituted. */
+export function checkModel(model: string): string {
+  const m = model.trim();
+  if (!m.startsWith("meterless/") || m.length === "meterless/".length || /\s/.test(m)) {
+    throw new Error("Meterless model must be a meterless/* routing id (see GET /v1/models)");
+  }
+  return m;
+}
+
 export function checkToken(token: string | undefined | null): string {
   const t = (token ?? "").trim();
   if (!t) throw new Error(`Meterless Runtime token missing: set ${METERLESS.tokenKey} or METERLESS_STATE_DIR (runtime writes <stateDir>/proxy-token)`);
@@ -124,7 +133,7 @@ export function meterlessChatModel(cfg: MeterlessConfig): ChatModel {
     provider: METERLESS.provider,
     baseURL: normalizeMeterlessBaseURL(cfg.baseURL ?? METERLESS.defaultBaseURL),
     apiKey: token,
-    model: cfg.model ?? METERLESS.defaultModel,
+    model: checkModel(cfg.model ?? METERLESS.defaultModel),
     timeoutMs: cfg.timeoutMs ?? METERLESS.timeoutMs,
     maxRetries: cfg.maxRetries,
     // contract: meterless-app on every request, meterless-scope: user on chat
@@ -151,6 +160,7 @@ export interface ProbeResult {
  */
 export async function probeMeterless(baseURL: string, token: string, fetchImpl: typeof fetch = fetch, timeoutMs = 5_000): Promise<ProbeResult> {
   const url = normalizeMeterlessBaseURL(baseURL);
+  checkToken(token); // empty or placeholder token: refuse before any request
   try {
     const res = await fetchImpl(`${url}/models`, { headers: baseHeaders(token), signal: AbortSignal.timeout(timeoutMs) });
     if (res.status === 401 || res.status === 403) return { baseURL: url, status: "unauthorized", models: [], detail: `HTTP ${res.status}` };
