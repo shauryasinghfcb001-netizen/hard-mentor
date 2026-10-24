@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { researchExam, type StudentGoal } from "../src/context/examContext.ts";
-import { baseDomain, htmlToText, isPrivateAddress, parseDates, webResearch } from "../src/context/webResearch.ts";
+import { baseDomain, boundedFetcher, htmlToText, isPrivateAddress, parseDates, webResearch } from "../src/context/webResearch.ts";
 
 // These tests drive the code with a scripted fetch. The scripted pages are test inputs for
 // the parser and the safety bounds; they are not research results and are never shown to a student.
@@ -39,9 +39,21 @@ const wdRoutes = (entities: { id: string; label: string; aliases?: string[]; sit
 const GOAL: StudentGoal = { exam: "Test Entrance 2027", country: "India", goal: "top rank", statedExamDate: "2027-01-24" };
 const run = async (routes: Record<string, Route>, goal = GOAL, choice?: string) => {
   const { f, seen } = fakeFetch(routes);
-  const src = webResearch({ fetchImpl: f, lookup: publicLookup, now: () => "2026-10-24T09:00:00Z", pauseMs: 0 });
+  const src = webResearch({ fetchImpl: f, lookup: publicLookup, enabled: true, now: () => "2026-10-24T09:00:00Z", pauseMs: 0 });
   return { step: await researchExam(src, goal, { ranAt: "2026-10-24T09:00:00Z", choice }), seen, src };
 };
+
+test("gate: default OFF sends no request of any kind and says so", async () => {
+  const { f, seen } = fakeFetch({});
+  let looked = 0;
+  const src = webResearch({ fetchImpl: f, lookup: async () => (looked++, ["8.8.8.8"]), pauseMs: 0, enabled: false });
+  const step = await researchExam(src, GOAL, { ranAt: "2026-10-24T09:00:00Z" });
+  assert.equal(seen.length, 0);
+  assert.equal(looked, 0);
+  assert.match(JSON.stringify(step), /Live research is disabled/);
+  const r = await boundedFetcher({ fetchImpl: f, enabled: false }).raw("https://example.gov.in/robots.txt", "text/plain");
+  assert.deepEqual([r.ok, seen.length], [false, 0]);
+});
 
 const SITE = "https://exam.example.gov.in";
 const E1 = { id: "Q1", label: "Test Entrance", aliases: ["TE"], site: SITE, org: "Q900" };

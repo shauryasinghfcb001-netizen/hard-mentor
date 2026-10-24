@@ -32,7 +32,12 @@ export interface WebResearchOptions {
   lookup?: (host: string) => Promise<string[]>;
   now?: () => string;
   pauseMs?: number;
+  /** master switch for ALL outbound research traffic; default OFF unless HM_LIVE_RESEARCH=1 */
+  enabled?: boolean;
 }
+
+export const LIVE_RESEARCH_DISABLED = "Live research is disabled";
+export const liveResearchEnabled = (opts: { enabled?: boolean } = {}): boolean => opts.enabled ?? process.env.HM_LIVE_RESEARCH === "1";
 
 export type FetchOutcome = { ok: true; url: string; contentType: string; text: string; truncated: boolean } | { ok: false; url: string; reason: string };
 
@@ -77,6 +82,8 @@ export function boundedFetcher(opts: WebResearchOptions = {}) {
   }
 
   async function raw(url: string, accept: string): Promise<FetchOutcome> {
+    // single choke point: Wikidata, robots.txt, pages and redirects all pass here, before DNS or fetch
+    if (!liveResearchEnabled(opts)) return { ok: false, url, reason: LIVE_RESEARCH_DISABLED };
     let current = url;
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
       let u: URL;
@@ -452,6 +459,10 @@ export function webResearch(opts: WebResearchOptions = {}): ResearchSource & { l
     lastLimits: () => [...limits],
     async find(goal: StudentGoal): Promise<ExamCandidate[]> {
       limits.length = 0;
+      if (!liveResearchEnabled(opts)) {
+        limits.push(LIVE_RESEARCH_DISABLED);
+        return [];
+      }
       // Outbound query is the exam name only (year stripped); never goal text, date, marks or identity.
       const query = goal.exam.replace(/\b20\d\d\b/g, "").replace(/\s+/g, " ").trim();
       if (!looksLikeExamName(query)) {
