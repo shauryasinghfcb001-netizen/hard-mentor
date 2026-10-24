@@ -4,6 +4,7 @@
 import fs from "node:fs";
 import { readQuizLog, recordQuizResult, type QuizLogRow, type QuizWriteBack } from "../data/studyData.ts";
 import { rememberQuizResult, type StudentMemory } from "../memory/studentMemory.ts";
+import { appendAttempt, attemptsPathFor } from "./attempts.ts";
 import { gradeQuiz, type Quiz, type QuizResult } from "./quiz.ts";
 
 export type QuizStep =
@@ -31,6 +32,17 @@ export function submitQuiz(
     correct: r.correct,
     total: r.total,
     sources: [...new Set(quiz.items.map((i) => `ncert:${i.chunkId}`))],
+  });
+  appendAttempt(attemptsPathFor(opts.quizLog), {
+    quizId: quiz.id,
+    studentId: opts.studentId,
+    topicId: quiz.topicId,
+    takenAt: opts.takenAt,
+    correct: r.correct,
+    total: r.total,
+    score: r.score,
+    answers: r.perItem,
+    logRef: record.logRef,
   });
   const memoryId = opts.memory
     ? rememberQuizResult(opts.memory, {

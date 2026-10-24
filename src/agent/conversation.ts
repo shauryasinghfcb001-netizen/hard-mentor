@@ -15,6 +15,7 @@ import { zetarisStudyData } from "../data/zetarisStudyData.ts";
 import { studentDir, type StudentMemory } from "../memory/studentMemory.ts";
 import type { ActiveQuiz } from "../quiz/quizTurn.ts";
 import type { Corpus, Retriever } from "../rag/ncert.ts";
+import { buildProgress, renderProgress } from "../quiz/progress.ts";
 import { classifyIntent, runMentor, type MentorState, type StudentContext } from "./graph.ts";
 import type { Planner } from "./planner.ts";
 import { buildWhyCard, type WhyCard } from "./whyCard.ts";
@@ -216,6 +217,13 @@ const TAIL = String.raw`\s*(please)?\s*[.!?]*\s*$`;
 const MEMORY_OFF = new RegExp(`${LEAD}((turn|switch|set)\\s+(my\\s+|the\\s+)?memory\\s+(to\\s+)?off|memory\\s+off|(stop|quit)\\s+(remembering|saving|storing)\\s+(me|anything|things|about\\s+me))${TAIL}`, "i");
 const MEMORY_ON = new RegExp(`${LEAD}((turn|switch|set)\\s+(my\\s+|the\\s+)?memory\\s+(to\\s+)?on|memory\\s+on|you\\s+can\\s+(start\\s+)?remember(ing)?\\s+me)${TAIL}`, "i");
 const MEMORY_STATUS = /^\s*is\s+(my\s+|your\s+)?memory\s+(on|off)\s*\??\s*$/i;
+
+const PROGRESS = /^\s*(show\s+(me\s+)?)?(my\s+)?(quiz\s+)?(progress|quiz\s+history|quiz\s+results|scores)(\s+(so\s+far|report))?\s*[.!?]*\s*$/i;
+
+/** "my progress" / "show my quiz history": a read-only view of saved attempts. */
+export function detectProgress(message: string): boolean {
+  return PROGRESS.test(message);
+}
 
 /** "turn memory off / on" and "is memory on?"; null for anything else. */
 export function detectMemoryControl(message: string): "off" | "on" | "status" | null {
@@ -420,6 +428,13 @@ async function converseTurn(env: ConversationEnv, profile: StudentProfile, messa
     if (planned.draft) s.lastPlan = { at: env.now(), top: planned.draft.blocks[0]?.topicId ?? "", topics: Object.fromEntries(planned.ranked.map((t) => [t.topicId, { name: t.name, mastery: t.mastery, priority: t.priority }])) };
     saveSession(env, s);
     return { reply: [applied.note, explain, planned.reply].filter(Boolean).join("\n"), handledBy: "graph", state: planned, why: buildWhyCard(planned), session: s };
+  }
+
+  if (detectProgress(message) && !detectDistress(message).distress) {
+    const st = await student();
+    const reply = renderProgress(buildProgress({ studentId: profile.studentId, topics: st.topics, daysToExam: st.daysToExam, quizLog: env.quizLog }));
+    saveSession(env, s);
+    return { reply, handledBy: "intake", state: null, why: null, session: s };
   }
 
   const asksMemory = s.memoryOff && ["memory_list", "memory_forget"].includes(classifyIntent(message, null, !!s.activeQuiz).intent);

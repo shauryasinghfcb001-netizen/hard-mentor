@@ -30,3 +30,4 @@ C, B, B, C, C
 Plan my study for today.
 # --- 7. What memory now holds ---
 What do you remember about me?
+my progress

@@ -19,6 +19,7 @@
     "demo:journey": "sh -c 'R=$(mktemp -d); S=$(date +%Y%m%d-%H%M%S); mkdir -p evidence; node --import tsx scripts/student-journey.ts $R | tee evidence/student-journey-$S.txt'",
     "demo:chat": "sh -c 'R=$(mktemp -d); S=$(date +%Y%m%d-%H%M%S); mkdir -p evidence; node --import tsx scripts/chat.ts $R --today 2026-10-23 < scripts/quiz-conversation.txt | tee evidence/quiz-conversation-$S.txt'",
     "chat": "node --import tsx scripts/chat.ts",
+    "progress": "node --import tsx scripts/progress.ts",
     "eval:heldout": "sh -c 'S=$(date +%Y%m%d-%H%M%S); mkdir -p evidence; HM_EVAL_OUT=evidence/heldout-eval-$S.json node --import tsx --test eval/heldout.test.ts'",
     "eval:frozen": "sh -c 'S=$(date +%Y%m%d-%H%M%S); mkdir -p evidence; HM_EVAL_OUT=evidence/frozen-v2-run-$S.json node --import tsx --test eval/frozen-v2.test.ts'"
   },

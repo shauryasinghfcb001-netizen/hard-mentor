@@ -1,6 +1,6 @@
 # Hard Mentor: portable handoff
 
-Updated 2026-10-25 on branch `wip/offline-loop`. Lists what is real, rule-based, mock-tested and not done. Contains no credentials, tokens, org IDs or logins. The older root `HANDOFF.md` is the milestone-9 checkpoint and is not replaced.
+Updated 2026-10-25 (progress slice added) on branch `wip/offline-loop`. Lists what is real, rule-based, mock-tested and not done. Contains no credentials, tokens, org IDs or logins. The older root `HANDOFF.md` is the milestone-9 checkpoint and is not replaced.
 
 ## Purpose
 
@@ -22,8 +22,9 @@ Hard Mentor is a CBSE Class 11-12 CLI study agent (Open Agent Hackathon 2026, Tr
 
 ## Test results (this session, run with a scrubbed environment: `env -i` with PATH and HOME only)
 
-- `npm test`: 219 pass, 0 fail, 0 cancelled, 0 skipped (6 suites).
+- `npm test`: 227 pass, 0 fail, 0 cancelled, 0 skipped (219 before the progress slice + 8 in `test/progress.test.ts`).
 - `npm run typecheck`: exit 0.
+- Progress tests are offline, rule planner only, fictional students, fetch stub fails the test if called.
 - Model-related new tests (`test/model-wiring`, `model-compare`, `model-safety`, `chat-cli`) replace `fetch` with a stub that fails the test if called, and pass the CLI an explicit env object.
 
 ## Commands (verified in package.json)
@@ -53,6 +54,21 @@ Hard Mentor is a CBSE Class 11-12 CLI study agent (Open Agent Hackathon 2026, Tr
 - Zetaris: the user supplied historical output of one successful connector read. That is user-supplied historical evidence, not a run performed by this checkpoint or by any test. In-product Zetaris use remains unproven: the connector is not wired into the default conversation, quiz results do not write back, and no student table is loaded.
 - Provider permission: under-18 eligibility is unconfirmed for any model provider. Confirm before any live call.
 
+## Quiz attempts and progress view (this slice, rule planner, offline)
+
+Already existed before this slice (verified from disk): quiz built from NCERT Ch 1 notes, deterministic exact-match scoring, mastery write-back (m = 0.7m + 0.3 x score) into `study-records.csv`, `quiz-log.csv` row, H-MEM summary, and a next plan that ranks by the saved mastery and cites the quiz. Mastered means mastery >= 0.85 and the rule planner skips it.
+
+Added:
+- `src/quiz/attempts.ts`: `quiz-attempts.jsonl` beside the quiz log, one line per scored quiz: quizId, studentId, topicId, takenAt, correct, total, score, per-question `{given, answer, ok, chunkId}`, logRef. `given` is the option text parsed from the quiz, never free text. Written by `submitQuiz` only on a completed, scored quiz (not on cancel, distress or repeat).
+- `src/quiz/progress.ts`: `buildProgress`, `renderProgress`. Read-only. Replays saved mastery history backwards to show, per attempt, the first-ranked topic just before and after it, plus the current recommendation and weak/mastered lists.
+- Chat: "my progress", "show my quiz history", "scores" (`detectProgress` in `src/agent/conversation.ts`). Handled before the graph, per student, no write, an open quiz stays open.
+- `npm run progress -- <dataRoot> [studentId] [--days N] [--limit N]` (`scripts/progress.ts`): same view from a chat data root. Writes nothing.
+- `scripts/quiz-conversation.txt` ends with "my progress" so `npm run demo:chat` shows it.
+
+Persisted per data root: `study-records.csv` (mastery), `quiz-log.csv`, `quiz-attempts.jsonl` (new), `sessions/`, `students/` (H-MEM). Attempts taken before this slice have no per-question answers; the view says so.
+
+Limits: replay assumes the quiz log is the only thing that changed mastery. The view reads local CSV/quiz log; with `HM_STUDY_SOURCE=zetaris` it ranks the Zetaris baseline with the local log replayed on top, nothing is written to Zetaris. Only Ch 1 has notes, so only Electrostatics is quizzable. No model is involved anywhere in this slice.
+
 ## Quarantine
 
 Incompatible Antigravity drafts are preserved as `.txt` files in `docs/drafts/quarantine/` (`modelProposal.ts.txt`, `model-proposal.test.ts.txt`). They are not compiled, not tested, and not part of this commit. Other `docs/drafts/` files (README, sponsor explanation, video script) are also uncommitted drafts.
@@ -68,4 +84,4 @@ Incompatible Antigravity drafts are preserved as `.txt` files in `docs/drafts/qu
 
 1. Decide the fate of the quarantined drafts: either port the useful claim-validation ideas into `src/agent/modelSafety.ts` with tests against the real `Planner` and `ChatModel` interfaces, or delete the `.txt` files. Do not copy them in as-is.
 2. With explicit user approval and provider eligibility confirmed, run one live `HM_PLANNER=model` turn on synthetic data and record the real validated/rejected/error outcome. Until then keep claiming mock-tested only.
-3. Wire `HM_STUDY_SOURCE=zetaris` into a live read test with a loaded student table, keep the CSV path as the default, and add write-back only after the read is demonstrated in-product.
+3. Add a second NCERT note corpus and a `CORPUS_TOPIC` entry so quizzes and the progress view cover more than Electrostatics. Then wire `HM_STUDY_SOURCE=zetaris` into a live read test with a loaded student table (CSV stays default); add Zetaris write-back only after that read is demonstrated in-product.
