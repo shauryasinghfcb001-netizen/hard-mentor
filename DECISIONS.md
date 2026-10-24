@@ -97,6 +97,12 @@ Trade-off: the ledger is no longer strictly append-only for those fields; entry 
 - Intake is a fixed question sequence in the session layer: exam, country, goal, then date ("not sure" allowed; 120 days assumed and stated). It then calls `researchExam`. Distress is checked before every intake step, and the step does not advance. Moving intake into a graph node is possible later, but it was not needed for this loop.
 - After a plan, the session compares mastery and priority with the last plan and states what changed. The "top topic changed" or "unchanged" line comes from the ranked numbers, not from free text.
 
+**D25. 2026-10-24. Web exam research from public pages, authority gated by domain type.**
+- Shaurya authorized free, read-only reading of public official exam sites for this batch. Wikidata's keyless public API is used only to nominate the official site from the exam name (the one query sent out). This is a discovery step on a third-party site, not an exam site; flagged so Shaurya can object.
+- A nominated site counts as an exam authority only if its host is under a government or education suffix. Wikidata alone never makes a fact verified. A body on .org/.com is read as nothing and reported as such.
+- No exam profiles were added. Unknown or unreadable results stay unknown; the student can continue without research. A student-stated date stays labelled student-stated.
+- Not done: PDFs, pinned-IP fetch, a model reading the pages, discovery beyond Wikidata (no search engine is available without a key).
+
 ## Open questions for Shaurya
 
 **Q1. Nightshift / Meterless Runtime eligibility.** The setup resources describe Nightshift as the primary provider path. The latest announcement settles coding-tool choice only. Unresolved whether a final entry may skip Nightshift. Still unresolved after D19: the adapter shows Hard Mentor *can* use the Meterless Runtime; it does not establish whether a final entry *must*. Options: (a) Shaurya checks the platform/Discord himself; (b) approve a message to organizers; (c) proceed without Nightshift and disclose. No organizer contact without approval.

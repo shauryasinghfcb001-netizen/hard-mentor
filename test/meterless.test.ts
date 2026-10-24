@@ -178,3 +178,55 @@ test("graph: model planner on a MOCKED Meterless runtime is labelled meterless; 
   assert.ok(s2.trace.some((t) => /rule-planner-v1 \(rules; model failed: meterless request failed/.test(t.detail)));
   assert.ok(down.every((c) => c.url.startsWith("http://127.0.0.1:8088/")));
 });
+
+// OFFLINE MOCK - not Meterless connection evidence. Contract-alignment additions.
+
+test("OFFLINE MOCK: model must be a meterless/* routing id; unknown meterless ids are kept, other names refused", async () => {
+  const calls: Call[] = [];
+  const ok = meterlessChatModel({ token: TOKEN, model: "meterless/brand-new.mode", fetchImpl: mockFetch(() => ({ status: 200, body: { choices: [{ message: { content: "x" } }] } }), calls) });
+  await ok.chat([{ role: "user", content: "hi" }]);
+  assert.equal(JSON.parse(String(calls[0].init.body)).model, "meterless/brand-new.mode");
+  for (const bad of ["gpt-4o", "", "meterless/", "meterless/a b", "nvidia/nemotron"]) {
+    assert.throws(() => meterlessChatModel({ token: TOKEN, model: bad }), /meterless\/\* routing id/, JSON.stringify(bad));
+  }
+  assert.throws(() => meterlessFromEnv({ meterless_runtime_token: TOKEN, METERLESS_MODEL: "gpt-4o" }), /routing id/);
+});
+
+test("OFFLINE MOCK: probe and auto-detect refuse an empty or placeholder token with no request", async () => {
+  const calls: Call[] = [];
+  const f = mockFetch(() => ({ status: 200, body: {} }), calls);
+  await assert.rejects(probeMeterless("127.0.0.1:8088", "", f), /token missing/);
+  await assert.rejects(probeMeterless("127.0.0.1:8088", "rt-local", f), /placeholder/);
+  await assert.rejects(autoDetectMeterless("  ", f), /token missing/);
+  assert.equal(calls.length, 0);
+});
+
+test("OFFLINE MOCK: chat request timeout is 180 s (timer mocked), probe stays short; models request sends bearer + app header, no scope", async () => {
+  const realTimeout = AbortSignal.timeout;
+  const seen: number[] = [];
+  AbortSignal.timeout = ((ms: number) => (seen.push(ms), new AbortController().signal)) as typeof AbortSignal.timeout;
+  try {
+    const calls: Call[] = [];
+    const f = mockFetch((url) => (url.endsWith("/models") ? { status: 200, body: { data: [{ id: "meterless/auto" }] } } : { status: 200, body: { choices: [{ message: { content: "ok" } }] } }), calls);
+    await meterlessChatModel({ token: TOKEN, fetchImpl: f }).chat([{ role: "user", content: "hi" }]);
+    assert.deepEqual(seen, [180_000]);
+    await probeMeterless("127.0.0.1:8088", TOKEN, f);
+    assert.equal(seen[1], 5_000);
+    const h = calls[1].init.headers as Record<string, string>;
+    assert.equal(h.authorization, `Bearer ${TOKEN}`);
+    assert.equal(h["meterless-app"], "hard-mentor");
+    assert.equal(h["meterless-scope"], undefined);
+  } finally {
+    AbortSignal.timeout = realTimeout;
+  }
+});
+
+test("OFFLINE MOCK: chat 401/403 is not retried; plain-text content stays a string", async () => {
+  for (const status of [401, 403]) {
+    const calls: Call[] = [];
+    const m = meterlessChatModel({ token: TOKEN, sleep: async () => {}, fetchImpl: mockFetch(() => ({ status, body: { error: TOKEN } }), calls) });
+    await assert.rejects(m.chat([{ role: "system", content: "s" }, { role: "user", content: "u" }]), (e: Error) => !e.message.includes(TOKEN));
+    assert.equal(calls.length, 1);
+    for (const msg of JSON.parse(String(calls[0].init.body)).messages) assert.equal(typeof msg.content, "string");
+  }
+});

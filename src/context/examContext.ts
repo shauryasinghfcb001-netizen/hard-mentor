@@ -52,6 +52,8 @@ export interface ResearchSource {
   name: string;
   kind: "fixture" | "web";
   find(goal: StudentGoal): Promise<ExamCandidate[]>;
+  /** web sources: read the chosen exam's official pages and return sourced facts plus what could not be found */
+  deepen?(candidate: ExamCandidate, goal: StudentGoal): Promise<{ facts: ExamFact[]; limits: string[]; pages?: string[] }>;
 }
 
 export interface CheckedFact extends ExamFact {
@@ -62,11 +64,11 @@ export interface CheckedFact extends ExamFact {
 export interface ExamContext {
   goal: StudentGoal;
   exam: { id: string; name: string; body: string; country: string };
-  resolvedBy: "single match" | "named in goal" | "student choice";
+  resolvedBy: "single match" | "named in goal" | "student choice" | "student-stated, not researched";
   facts: CheckedFact[];
   examDate: { value: string; origin: "verified-official" | "student-stated" } | null;
   corpora: string[];
-  research: { source: string; kind: "fixture" | "web"; ranAt: string; candidates: number };
+  research: { source: string; kind: "fixture" | "web" | "none"; ranAt: string; candidates: number; /** what the research could not find or was stopped by */ limits?: string[]; /** official pages actually read */ pages?: string[] };
 }
 
 export type ContextStep =
@@ -98,7 +100,7 @@ const lower = (s: string) => s.toLowerCase();
  * "ambiguous" result. `ranAt` is passed in so runs are reproducible.
  */
 export async function researchExam(source: ResearchSource, goal: StudentGoal, opts: { ranAt: string; choice?: string }): Promise<ContextStep> {
-  const found = await source.find(goal);
+  const found = await source.find(goal).catch(() => [] as ExamCandidate[]);
   const naming = (text: string) => found.filter((c) => c.distinct.some((d) => new RegExp(`\\b${d}\\b`).test(lower(text))));
   let pick = found;
   let resolvedBy: ExamContext["resolvedBy"] = "single match";
@@ -114,12 +116,17 @@ export async function researchExam(source: ResearchSource, goal: StudentGoal, op
     }
   }
   if (pick.length === 0) {
+    const limits = source.kind === "web" && "lastLimits" in source ? (source as unknown as { lastLimits(): string[] }).lastLimits() : [];
     const what = found.length ? `"${opts.choice}" does not match any of the options` : `I could not find "${goal.exam}" (${goal.country})`;
     return {
       status: "not_found",
       reply:
         `${what}. ` +
-        (source.kind === "fixture" ? "Web research is not built yet; I only have a small offline list of exams, so I can't look this up." : "Please check the exam name."),
+        (source.kind === "fixture"
+        ? "Web research is not built yet; I only have a small offline list of exams, so I can't look this up."
+        : found.length
+          ? "Please pick one of the exams I listed."
+          : `I found no official website for it through public sources${limits.length ? ` (${limits.join("; ")})` : ""}, so I will not guess. Check the exam name and country.`),
     };
   }
   if (pick.length > 1) {
@@ -130,7 +137,9 @@ export async function researchExam(source: ResearchSource, goal: StudentGoal, op
     };
   }
   const c = pick[0];
-  const facts = c.facts.map((f) => checkFact(f, c));
+  let extra: { facts: ExamFact[]; limits: string[]; pages?: string[] } = { facts: [], limits: [] };
+  if (source.deepen) extra = await source.deepen(c, goal).catch(() => ({ facts: [], limits: ["research stopped on an internal error; no official facts were read"] }));
+  const facts = [...c.facts, ...extra.facts].map((f) => checkFact(f, c));
   const officialDate = facts.find((f) => f.key === "exam_date" && f.status === "verified-official");
   const examDate = officialDate
     ? { value: officialDate.value, origin: "verified-official" as const }
@@ -146,8 +155,25 @@ export async function researchExam(source: ResearchSource, goal: StudentGoal, op
       facts,
       examDate,
       corpora: c.corpora,
-      research: { source: source.name, kind: source.kind, ranAt: opts.ranAt, candidates: found.length },
+      research: { source: source.name, kind: source.kind, ranAt: opts.ranAt, candidates: found.length, limits: extra.limits, pages: extra.pages },
     },
+  };
+}
+
+/**
+ * For an exam the research source could not find. Nothing about the exam is
+ * claimed: no facts, no notes, only what the student said. A later research
+ * step (a correction of the exam, or a web source) can replace it.
+ */
+export function unresearchedContext(goal: StudentGoal, ranAt: string): ExamContext {
+  return {
+    goal,
+    exam: { id: "unresearched", name: goal.exam, body: "not researched", country: goal.country },
+    resolvedBy: "student-stated, not researched",
+    facts: [],
+    examDate: goal.statedExamDate ? { value: goal.statedExamDate, origin: "student-stated" } : null,
+    corpora: [],
+    research: { source: "none", kind: "none", ranAt, candidates: 0 },
   };
 }
 
@@ -157,6 +183,7 @@ export function daysUntil(date: string, today: string): number {
 
 /** One line for the graph trace and the why card. */
 export function describeContext(ctx: ExamContext): string {
+  if (ctx.research.kind === "none") return `exam context: ${ctx.exam.name} NOT researched (student-stated only); exam date ${ctx.examDate ? `${ctx.examDate.value} (${ctx.examDate.origin})` : "unknown"}`;
   const verified = ctx.facts.filter((f) => f.status === "verified-official").length;
   const date = ctx.examDate ? `${ctx.examDate.value} (${ctx.examDate.origin})` : "unknown";
   return (

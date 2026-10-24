@@ -32,6 +32,8 @@ export interface StudentContext {
   topics: TopicState[];
   /** exam, country and goal resolved by researchExam; absent for older callers */
   exam?: ExamContext;
+  /** where `topics` came from and the SQL that source ran; absent = nothing is claimed, the why card shows no source */
+  provenance?: { source: string; sql: string | null };
 }
 
 export interface GraphDeps {
@@ -266,7 +268,7 @@ export function buildMentorGraph(deps: GraphDeps) {
       const draft: Draft = {
         decision: "safe_fallback",
         blocks: top ? [{ topicId: top.topicId, minutes, activity: "NCERT examples" }] : [],
-        message: top ? `Let's keep today simple: ${minutes} min of ${top.name}, NCERT examples only.` : "Let's keep today simple.",
+        message: top ? `Let's keep today simple: ${minutes} min of ${top.name}, NCERT examples only.` : "I have no study records for you yet, so there is nothing to rank and I won't guess a plan. Study records come from a data source, and none has rows for you.",
         evidence: top ? [top.sourceRow] : [],
         reasons: top ? [{ text: `${top.name} is the top priority`, ref: { kind: "data_row", id: top.sourceRow } }] : [],
       };
@@ -284,6 +286,7 @@ export function buildMentorGraph(deps: GraphDeps) {
     }))
     .addNode("write_back", (s) => {
       if (!memory) return { trace: [{ node: "write_back", detail: "memory OFF: no write-back" }] };
+      if (!s.ranked.length) return { trace: [{ node: "write_back", detail: "no study records, so no plan was made: nothing written to memory" }] };
       const rec = rememberEpisode(memory, {
         intent: s.intent,
         decision: s.draft!.decision,

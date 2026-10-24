@@ -7,13 +7,14 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { daysUntil, researchExam, type ExamContext, type ResearchSource, type StudentGoal } from "../context/examContext.ts";
+import { daysUntil, researchExam, unresearchedContext, type ExamContext, type ResearchSource, type StudentGoal } from "../context/examContext.ts";
 import { detectDistress } from "../core/distress.ts";
+import { rankTopics, urgency } from "../core/priority.ts";
 import { csvStudyData } from "../data/studyData.ts";
 import { studentDir, type StudentMemory } from "../memory/studentMemory.ts";
 import type { ActiveQuiz } from "../quiz/quizTurn.ts";
 import type { Corpus, Retriever } from "../rag/ncert.ts";
-import { runMentor, type MentorState, type StudentContext } from "./graph.ts";
+import { classifyIntent, runMentor, type MentorState, type StudentContext } from "./graph.ts";
 import type { Planner } from "./planner.ts";
 import { buildWhyCard, type WhyCard } from "./whyCard.ts";
 
@@ -31,6 +32,8 @@ export interface Session {
   intake: { step: IntakeStep; goal: Partial<StudentGoal> };
   exam: ExamContext | null;
   activeQuiz: ActiveQuiz | null;
+  /** the student turned memory off: nothing is recalled or written, stored memories are kept */
+  memoryOff?: boolean;
   lastPlan: { at: string; top: string; topics: Record<string, { name: string; mastery: number; priority: number }> } | null;
 }
 
@@ -92,6 +95,7 @@ export function parseDate(text: string): string | null {
   return date.toISOString().slice(0, 10);
 }
 
+const NO_RESEARCH = /\b(continue|proceed|go\s+ahead|carry\s+on)\s+without\s+(the\s+)?(research|lookup|looking\s+it\s+up)\b/i;
 const UNSURE = /\b(not\s+sure|don'?t\s+know|no\s+idea|unknown|skip|later)\b/i;
 
 function strip(text: string, lead: RegExp): string {
@@ -99,13 +103,27 @@ function strip(text: string, lead: RegExp): string {
 }
 
 function describeResolved(ctx: ExamContext, today: string): string {
+  if (ctx.research.kind === "none") {
+    return [
+      `I have not researched ${ctx.exam.name} (${ctx.exam.country}): I could not research it, and I won't guess facts about it. I have no syllabus, weightage or official dates for it.`,
+      ctx.examDate ? `I'll use your exam date ${ctx.examDate.value}, which is yours, not an official one (${daysUntil(ctx.examDate.value, today)} days from ${today}).` : `No exam date yet: I'll assume ${ASSUMED_DAYS_TO_EXAM} days for urgency until you tell me.`,
+      `Your plan is ranked from your saved study records and the marks weights stored in them, not from anything I researched about ${ctx.exam.name}. I have no notes to quiz you from for it.`,
+      `Say "plan my study for today". You can say "change my exam to <name>" later to try the lookup again.`,
+    ].join("\n");
+  }
   const mock = ctx.research.kind === "fixture";
   const lines = [
-    `got it: ${ctx.exam.name} (${ctx.exam.body}), ${ctx.resolvedBy === "student choice" ? "as you chose" : ctx.resolvedBy}.`,
+    `got it: ${ctx.exam.name} (${ctx.research.kind === "web" ? `run by ${ctx.exam.body}, per Wikidata, not verified` : ctx.exam.body}), ${ctx.resolvedBy === "student choice" ? "as you chose" : ctx.resolvedBy}.`,
     mock
       ? "What I know about it comes from a small offline list I was given, not from the web, so none of it is verified:"
-      : "What I found:",
-    ...ctx.facts.map((f) => `- ${f.key}: ${f.value} (${f.status.toUpperCase()}: ${f.why}; source ${f.source.url}, retrieved ${f.source.retrievedAt ?? "never"})`),
+      : ctx.research.pages?.length
+        ? `What I found, read just now from ${ctx.research.pages.length} official page(s) (the site address was nominated by Wikidata and I checked it is a government or education domain; check the link yourself):`
+        : "I could not read any official page for this exam, so I have no verified facts. All I have is below:",
+    ...ctx.facts.map((f) => `- ${f.key}: ${f.value} (${f.status.toUpperCase()}: ${f.why}; source ${f.source.url}, retrieved ${f.source.retrievedAt ?? "never"}; ${f.source.note})`),
+    ...(ctx.research.limits ?? []).map((l) => `- not found / limit: ${l}`),
+    ...(ctx.examDate?.origin === "verified-official" && ctx.goal.statedExamDate && ctx.goal.statedExamDate !== ctx.examDate.value
+      ? [`You said ${ctx.goal.statedExamDate}; the official page says ${ctx.examDate.value}. I use the official one and you can correct me if the page is outdated.`]
+      : []),
     ctx.examDate
       ? `Exam date ${ctx.examDate.value} is ${ctx.examDate.origin === "student-stated" ? "your date, not an official one" : "the official date"} (${daysUntil(ctx.examDate.value, today)} days from ${today}).`
       : `No exam date yet: I'll assume ${ASSUMED_DAYS_TO_EXAM} days for urgency until you tell me.`,
@@ -120,6 +138,11 @@ async function intakeTurn(env: ConversationEnv, profile: StudentProfile, s: Sess
   const g = s.intake.goal;
   switch (s.intake.step) {
     case "exam":
+      if (g.exam && g.country && g.goal && NO_RESEARCH.test(message)) {
+        s.exam = unresearchedContext(g as StudentGoal, env.now());
+        s.stage = "ready";
+        return `${first}, ${describeResolved(s.exam, env.now().slice(0, 10))}`;
+      }
       g.exam = strip(message, /^(i'?m|i\s+am)\s+(preparing|studying|appearing)\s+for\s+|^(my\s+exam\s+is|exam:?)\s*/i);
       s.intake.step = "country";
       return `Thanks. Which country is ${g.exam} in?`;
@@ -154,11 +177,109 @@ async function research(env: ConversationEnv, s: Session, first: string, choice?
   }
   if (step.status === "not_found") {
     if (s.intake.step !== "choice") s.intake.step = "exam";
-    return `${step.reply} ${s.intake.step === "exam" ? "You can name a different exam." : "Please pick one of the options above."}`;
+    return `${step.reply} ${s.intake.step === "exam" ? 'You can name a different exam, or say "continue without research" and I will plan from your date and goal only, without any exam facts.' : "Please pick one of the options above."}`;
   }
   s.exam = step.context;
   s.stage = "ready";
   return `${first}, ${describeResolved(step.context, env.now().slice(0, 10))}`;
+}
+
+type Correction = { field: "date" | "exam" | "country" | "goal"; value: string };
+
+const CORRECTION_CUE = /\b(actually|correction|wrong|change[ds]?|update[ds]?|correct|moved|postponed|preponed|rescheduled?|fix)\b/i;
+
+/**
+ * A student correcting an intake answer after onboarding. Needs a correction cue
+ * AND a named field, so quiz answers and ordinary questions are not caught.
+ * `value` is raw text for date (parsed later, so a bad date can be refused) and
+ * the new wording for the other fields.
+ */
+export function detectCorrection(message: string): Correction | null {
+  if (!CORRECTION_CUE.test(message)) return null;
+  // A question about a topic ("What is the date of ...? I think it was wrong") is not a correction.
+  if (/^\s*(what|why|how|which|when|who|is|are|does|do|can|could)\b/i.test(message) && /\?\s*$|\?\s/.test(message)) return null;
+  const to = (re: RegExp) => message.match(re)?.[1]?.trim().replace(/[.!]+$/, "") ?? null;
+  const exam = to(/\b(?:change|switch|update|correct)\s+(?:my\s+|the\s+)?exam\s+(?:to|as)\s+(.+)$/i) ?? to(/\bexam\s+is\s+(?:actually|now)\s+(?!on\b)(.+)$/i);
+  if (exam) return { field: "exam", value: exam };
+  const country = to(/\bcountry\s+(?:is\s+|to\s+|as\s+)(?:actually\s+)?(.+)$/i);
+  if (country) return { field: "country", value: country };
+  const goal = to(/\bgoal\s+(?:is\s+|to\s+|as\s+)(?:actually\s+)?(.+)$/i);
+  if (goal) return { field: "goal", value: goal };
+  if (/\b(exam|test|paper|boards?)\b/i.test(message) && (/\b(date|moved|postponed|preponed|rescheduled?)\b/i.test(message) || parseDate(message) || /\d{1,4}[-/]\d{1,2}[-/]\d{1,4}/.test(message)))
+    return { field: "date", value: message };
+  return null;
+}
+
+const LEAD = String.raw`^\s*(please\s+)?(can\s+you\s+|could\s+you\s+)?`;
+const TAIL = String.raw`\s*(please)?\s*[.!?]*\s*$`;
+const MEMORY_OFF = new RegExp(`${LEAD}((turn|switch|set)\\s+(my\\s+|the\\s+)?memory\\s+(to\\s+)?off|memory\\s+off|(stop|quit)\\s+(remembering|saving|storing)\\s+(me|anything|things|about\\s+me))${TAIL}`, "i");
+const MEMORY_ON = new RegExp(`${LEAD}((turn|switch|set)\\s+(my\\s+|the\\s+)?memory\\s+(to\\s+)?on|memory\\s+on|you\\s+can\\s+(start\\s+)?remember(ing)?\\s+me)${TAIL}`, "i");
+const MEMORY_STATUS = /^\s*is\s+(my\s+|your\s+)?memory\s+(on|off)\s*\??\s*$/i;
+
+/** "turn memory off / on" and "is memory on?"; null for anything else. */
+export function detectMemoryControl(message: string): "off" | "on" | "status" | null {
+  if (MEMORY_STATUS.test(message)) return "status";
+  if (MEMORY_OFF.test(message)) return "off";
+  if (MEMORY_ON.test(message)) return "on";
+  return null;
+}
+
+function daysFor(s: Session, now: string): number {
+  return s.exam?.examDate ? daysUntil(s.exam.examDate.value, now) : ASSUMED_DAYS_TO_EXAM;
+}
+
+/**
+ * Applies a correction to the session only (never the study records, quiz log or
+ * memory). Returns what to tell the student, and whether the plan inputs changed.
+ */
+async function applyCorrection(env: ConversationEnv, s: Session, c: Correction): Promise<{ note: string; changed: boolean }> {
+  const exam = s.exam!;
+  const today = env.now().slice(0, 10);
+  if (c.field === "goal") {
+    exam.goal.goal = c.value;
+    return { note: `Updated your goal to "${c.value}". Your plan ranking does not use the goal, so it does not change.`, changed: false };
+  }
+  if (c.field === "date") {
+    const d = parseDate(c.value);
+    if (!d) return { note: `I couldn't read an exact date in that, so I changed nothing. Please give it like 2027-03-01.`, changed: false };
+    if (d <= today) return { note: `${d} is not in the future, so I kept your exam date as ${exam.examDate?.value ?? "not set"}. Please check the date.`, changed: false };
+    if (exam.examDate?.origin === "verified-official") return { note: `The exam date ${exam.examDate.value} comes from an official source, so I did not replace it with yours (${d}).`, changed: false };
+    if (exam.examDate?.value === d) return { note: `Your exam date is already ${d}; nothing changed.`, changed: false };
+    exam.examDate = { value: d, origin: "student-stated" };
+    exam.goal.statedExamDate = d;
+    return { note: `Updated your exam date to ${d} (your date, not an official one).`, changed: true };
+  }
+  if (s.activeQuiz) return { note: `You have a quiz open and it uses notes for ${exam.exam.name}. Finish it or say "cancel the quiz" first, then change your ${c.field}. Nothing changed.`, changed: false };
+  const goal = { ...exam.goal, [c.field]: c.value };
+  const step = await researchExam(env.research, goal, { ranAt: env.now() });
+  if (step.status === "ambiguous") return { note: `${step.question} ${step.options.map((o) => o.name).join("; ")}. Nothing changed; say "change my exam to <name>".`, changed: false };
+  if (step.status === "not_found") return { note: `${step.reply} Nothing changed: you are still on ${exam.exam.name}.`, changed: false };
+  const next = step.context;
+  const kept = exam.corpora.filter((x) => !next.corpora.includes(x));
+  s.exam = next;
+  return {
+    note: [
+      `Updated your ${c.field}: you are now on ${next.exam.name} (${next.exam.body}). ${next.research.kind === "web" ? "I read public pages just now:" : "What I know about it comes from the same small offline list, so it is unverified."}`,
+      ...(next.research.kind === "web" ? [...next.facts.map((f) => `- ${f.key}: ${f.value} (${f.status.toUpperCase()}; source ${f.source.url}, retrieved ${f.source.retrievedAt})`), ...(next.research.limits ?? []).map((l) => `- not found / limit: ${l}`)] : []),
+      kept.length
+        ? `The notes I used for ${exam.exam.name} (${kept.join(", ")}) do not apply to ${next.exam.name}. Your saved results and quiz history are kept as they were and are NOT relabeled for the new exam. I have no syllabus for it, so I can't tell which saved topics still apply.`
+        : `Your saved results and quiz history are kept as they were.`,
+      `Local notes I can quiz you from for ${next.exam.name}: ${next.corpora.length ? next.corpora.join(", ") : "none"}.`,
+    ].join("\n"),
+    changed: true,
+  };
+}
+
+function dateChange(s: Session, before: { days: number; top: string; topics: NonNullable<Session["lastPlan"]>["topics"] } | null, state: MentorState, after: number): string {
+  const u = urgency;
+  const lines = [`Why the plan numbers moved: days to exam ${before ? before.days : "?"} -> ${after}; urgency 1 + 30/days = ${before ? u(before.days).toFixed(3) : "?"} -> ${u(after).toFixed(3)}. Mastery and quiz results are unchanged.`];
+  for (const t of state.ranked) {
+    const p = before?.topics[t.topicId];
+    lines.push(`- ${t.name}: priority ${p ? p.priority.toFixed(3) : "n/a"} -> ${t.priority.toFixed(3)}`);
+  }
+  const top = state.draft?.blocks[0]?.topicId;
+  if (before && top) lines.push(top === before.top ? `Top topic unchanged (${state.ranked.find((t) => t.topicId === top)?.name}): urgency scales every topic equally, so a new date changes the priority numbers, not their order.` : `Top topic changed.`);
+  return lines.join("\n");
 }
 
 function planChange(s: Session, state: MentorState): string | null {
@@ -187,7 +308,9 @@ export async function converse(env: ConversationEnv, profile: StudentProfile, me
   let s = loadSession(env, profile.studentId);
   const isNew = !s;
   s ??= { studentId: profile.studentId, stage: "intake", intake: { step: "exam", goal: {} }, exam: null, activeQuiz: null, lastPlan: null };
-  const memory = await env.memoryFor(profile.studentId);
+  const stored = await env.memoryFor(profile.studentId);
+  // Memory off: nothing is recalled or written. Stored memories stay and can still be listed or forgotten.
+  const memory = s.memoryOff ? null : stored;
   const deps = {
     planner: env.planner,
     memory,
@@ -209,6 +332,17 @@ export async function converse(env: ConversationEnv, profile: StudentProfile, me
     saveSession(env, s);
     return { reply: state.reply, handledBy: "graph", state, why: buildWhyCard(state), session: s };
   }
+  const control = !isNew && !detectDistress(message).distress ? detectMemoryControl(message) : null;
+  if (control) {
+    if (control !== "status") s.memoryOff = control === "off";
+    saveSession(env, s);
+    const reply = control === "status"
+      ? s.memoryOff ? "Memory is off for you. I am not recalling or saving anything new. Memories stored earlier are kept; say \"what do you remember\" to see them or \"forget <words>\" to delete them." : "Memory is on. I save a short summary of each plan and quiz result, never your typed answers."
+      : control === "off"
+        ? "Memory is off. I will not recall or save anything new about you. Memories stored earlier are kept, not deleted; say \"what do you remember\" to see them or \"forget <words>\" to delete them. Say \"turn memory on\" to resume."
+        : "Memory is on again. I will recall and save short summaries of plans and quiz results, never your typed answers.";
+    return { reply, handledBy: "intake", state: null, why: null, session: s };
+  }
   if (s.stage === "intake") {
     const first = profile.name.replace(/\s*\(fictional\)$/, "");
     const reply = isNew
@@ -218,7 +352,28 @@ export async function converse(env: ConversationEnv, profile: StudentProfile, me
     return { reply, handledBy: "intake", state: null, why: null, session: s };
   }
 
-  const state = await runMentor(deps, await student(), message, { activeQuiz: s.activeQuiz });
+  const correction = detectCorrection(message);
+  if (correction && !detectDistress(message).distress) {
+    // Plan numbers before the change, from the session's last plan or a fresh ranking of the unchanged records.
+    const beforeDays = daysFor(s, env.now());
+    const beforeTopics = s.lastPlan?.topics ?? Object.fromEntries(rankTopics((await student()).topics, beforeDays).map((t) => [t.topicId, { name: t.name, mastery: t.mastery, priority: t.priority }]));
+    const topOf = (t: typeof beforeTopics) => Object.entries(t).sort((a, b) => b[1].priority - a[1].priority)[0]?.[0] ?? "";
+    const before = { days: beforeDays, top: s.lastPlan?.top || topOf(beforeTopics), topics: beforeTopics };
+    const applied = await applyCorrection(env, s, correction);
+    if (!applied.changed) {
+      saveSession(env, s);
+      return { reply: applied.note, handledBy: "intake", state: null, why: null, session: s };
+    }
+    const planned = await runMentor(deps, await student(), "Plan my study for today.", { activeQuiz: null });
+    const after = daysFor(s, env.now());
+    const explain = correction.field === "date" ? dateChange(s, before, planned, after) : null;
+    if (planned.draft) s.lastPlan = { at: env.now(), top: planned.draft.blocks[0]?.topicId ?? "", topics: Object.fromEntries(planned.ranked.map((t) => [t.topicId, { name: t.name, mastery: t.mastery, priority: t.priority }])) };
+    saveSession(env, s);
+    return { reply: [applied.note, explain, planned.reply].filter(Boolean).join("\n"), handledBy: "graph", state: planned, why: buildWhyCard(planned), session: s };
+  }
+
+  const asksMemory = s.memoryOff && ["memory_list", "memory_forget"].includes(classifyIntent(message, null, !!s.activeQuiz).intent);
+  const state = await runMentor(asksMemory ? { ...deps, memory: stored } : deps, await student(), message, { activeQuiz: s.activeQuiz });
   s.activeQuiz = state.activeQuiz ?? null;
   let reply = state.reply;
   if (state.draft && (state.outcome === "sent" || state.outcome === "fallback")) {
