@@ -9,8 +9,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { daysUntil, researchExam, unresearchedContext, type ExamContext, type ResearchSource, type StudentGoal } from "../context/examContext.ts";
 import { detectDistress } from "../core/distress.ts";
-import { rankTopics, urgency } from "../core/priority.ts";
-import { csvStudyData } from "../data/studyData.ts";
+import { rankTopics, updateMastery, urgency, type TopicState } from "../core/priority.ts";
+import { csvStudyData, readQuizLog, type StudyDataSource, type TopicQuery } from "../data/studyData.ts";
+import { zetarisStudyData } from "../data/zetarisStudyData.ts";
 import { studentDir, type StudentMemory } from "../memory/studentMemory.ts";
 import type { ActiveQuiz } from "../quiz/quizTurn.ts";
 import type { Corpus, Retriever } from "../rag/ncert.ts";
@@ -304,7 +305,50 @@ function planChange(s: Session, state: MentorState): string | null {
   return lines.join("\n");
 }
 
+/** HM_STUDY_SOURCE: unset or "csv" = local CSV (default); "zetaris" = opt-in Zetaris read. Anything else throws. */
+function studySource(): "csv" | "zetaris" {
+  const v = process.env.HM_STUDY_SOURCE;
+  if (v === undefined || v === "csv") return "csv";
+  if (v === "zetaris") return "zetaris";
+  throw new Error(`HM_STUDY_SOURCE must be "csv" or "zetaris", got "${v}"`);
+}
+
+/**
+ * Zetaris baseline with the local quiz log replayed on top, in memory only.
+ * Nothing is written to Zetaris. Each logged quiz moves mastery with the same
+ * update and rounding recordQuizResult uses, so the next recommendation changes.
+ */
+function withAttemptLog(q: TopicQuery, quizLog: string, studentId: string): TopicQuery {
+  const rows: TopicState[] = q.rows.map((r) => ({ ...r }));
+  if (fs.existsSync(quizLog)) {
+    for (const a of readQuizLog(quizLog)) {
+      if (a.studentId !== studentId) continue;
+      const r = rows.find((x) => x.topicId === a.topicId);
+      if (!r) continue;
+      r.mastery = Math.round(updateMastery(r.mastery, a.correct / a.total) * 1000) / 1000;
+      r.lastQuiz = { quizId: a.quizId, takenAt: a.takenAt, correct: a.correct, total: a.total, ref: a.ref };
+    }
+  }
+  return { ...q, rows, source: `Zetaris baseline + local attempt log (${q.source})` };
+}
+
 export async function converse(env: ConversationEnv, profile: StudentProfile, message: string): Promise<TurnResult> {
+  const mode = studySource();
+  // One Zetaris source per turn; it reads no env or network until topicsFor is called.
+  const zetaris: StudyDataSource | null = mode === "zetaris" ? zetarisStudyData() : null;
+  try {
+    return await converseTurn(env, profile, message, zetaris);
+  } catch (e) {
+    // Fail closed: a Zetaris read failure ends the turn. Never answer from the CSV.
+    if (zetaris && e instanceof Error && e.message.startsWith("Zetaris unavailable")) {
+      const s = loadSession(env, profile.studentId) ?? { studentId: profile.studentId, stage: "intake" as const, intake: { step: "exam" as const, goal: {} }, exam: null, activeQuiz: null, lastPlan: null };
+      return { reply: "Zetaris unavailable", handledBy: "graph", state: null, why: null, session: s };
+    }
+    throw e;
+  }
+}
+
+async function converseTurn(env: ConversationEnv, profile: StudentProfile, message: string, zetaris: StudyDataSource | null): Promise<TurnResult> {
   let s = loadSession(env, profile.studentId);
   const isNew = !s;
   s ??= { studentId: profile.studentId, stage: "intake", intake: { step: "exam", goal: {} }, exam: null, activeQuiz: null, lastPlan: null };
@@ -317,18 +361,24 @@ export async function converse(env: ConversationEnv, profile: StudentProfile, me
     retriever: env.retriever,
     quiz: { corpora: env.corpora, records: env.records, quizLog: env.quizLog, now: () => env.now() },
   };
-  const student = async (): Promise<StudentContext> => ({
-    studentId: profile.studentId,
-    name: profile.name,
-    hoursPerDay: profile.hoursPerDay,
-    daysToExam: s!.exam?.examDate ? daysUntil(s!.exam.examDate.value, env.now()) : ASSUMED_DAYS_TO_EXAM,
-    topics: (await csvStudyData(env.records, env.quizLog).topicsFor(profile.studentId)).rows,
-    exam: s!.exam ?? undefined,
-  });
+  const student = async (readTopics = true): Promise<StudentContext> => {
+    const base = {
+      studentId: profile.studentId,
+      name: profile.name,
+      hoursPerDay: profile.hoursPerDay,
+      daysToExam: s!.exam?.examDate ? daysUntil(s!.exam.examDate.value, env.now()) : ASSUMED_DAYS_TO_EXAM,
+      exam: s!.exam ?? undefined,
+    };
+    if (!zetaris) return { ...base, topics: (await csvStudyData(env.records, env.quizLog).topicsFor(profile.studentId)).rows };
+    // Distress replies never wait on Zetaris: topics are dropped there anyway.
+    if (!readTopics) return { ...base, topics: [] };
+    const q = withAttemptLog(await zetaris.topicsFor(profile.studentId), env.quizLog, profile.studentId);
+    return { ...base, topics: q.rows, provenance: { source: q.source, sql: q.sql } };
+  };
 
   // Distress first, in every stage. The graph sends the override reply; intake does not advance.
   if (s.stage === "intake" && detectDistress(message).distress) {
-    const state = await runMentor(deps, { ...(await student()), topics: [] }, message);
+    const state = await runMentor(deps, { ...(await student(false)), topics: [] }, message);
     saveSession(env, s);
     return { reply: state.reply, handledBy: "graph", state, why: buildWhyCard(state), session: s };
   }
