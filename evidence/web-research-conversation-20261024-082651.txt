@@ -1,0 +1,85 @@
+TERMINAL DEMONSTRATION (not a student interface).
+WHAT RUNS: exam research = LIVE read of public pages (discovery via Wikidata, facts only from the exam body's own site); no model reads them; planner = rule-planner-v1 (no model); quiz = rules over NCERT Ch 1 notes;
+memory = H-MEM per student; records = local synthetic CSV copy in /var/folders/lf/vwzs5cg50n3635flw0cg4wtw0000gn/T/tmp.01B7Uz0Qc6; students and their messages are fictional; clock starts 2026-10-24T09:00Z.
+
+
+# Riya (fictional): names a real exam
+
+Riya (fictional) > hi
+Mentor > Hi Riya. Before I plan anything I need to know your exam. Which exam are you preparing for?
+   | (intake step, no graph run; next step: exam)
+
+Riya (fictional) > JEE Main 2027
+Mentor > Thanks. Which country is JEE Main 2027 in?
+   | (intake step, no graph run; next step: country)
+
+Riya (fictional) > India
+Mentor > What is your goal for it? For example a score or a rank.
+   | (intake step, no graph run; next step: goal)
+
+Riya (fictional) > top 1000 rank
+Mentor > When is the exam? Give a date like 2027-02-15, or say "not sure".
+   | (intake step, no graph run; next step: date)
+
+Riya (fictional) > 2027-01-24
+Mentor > Riya, got it: Joint Entrance Examination (Main) (run by National Testing Agency, per Wikidata, not verified), single match.
+         What I found, read just now from 1 official page(s) (the site address was nominated by Wikidata and I checked it is a government or education domain; check the link yourself):
+         - conducting_body: National Testing Agency (UNVERIFIED: www.wikidata.org is not an official domain of National Testing Agency; source https://www.wikidata.org/wiki/Q4728938, retrieved 2026-10-24T02:56:54.525Z; Wikidata lists https://jeemain.nta.nic.in as the official website)
+         - official_site_confirmed: nta.ac.in names Joint Entrance Examination (Main) (page title: "National Testing Agency") (VERIFIED-OFFICIAL: fetched 2026-10-24T02:56:55.587Z from nta.ac.in; source https://nta.ac.in/, retrieved 2026-10-24T02:56:55.587Z; National Testing Agency; exam named on page: true; year 2027 appears in a sentence naming the exam: false; page truncated at size cap)
+         - not found / limit: https://jeemain.nta.nic.in/: stopped: 403 (access restricted or throttled)
+         - not found / limit: no exam date for 2027 found on the pages read
+         Exam date 2027-01-24 is your date, not an official one (92 days from 2026-10-24).
+         Local notes I can quiz you from: none.
+         Say "plan my study for today" or "quiz me".
+   | (intake step, no graph run; next step: done)
+
+# Kabir (fictional): name that may match more than one exam
+
+Kabir (fictional) > hi
+Mentor > Hi Kabir. Before I plan anything I need to know your exam. Which exam are you preparing for?
+   | (intake step, no graph run; next step: exam)
+
+Kabir (fictional) > NEET
+Mentor > Thanks. Which country is NEET in?
+   | (intake step, no graph run; next step: country)
+
+Kabir (fictional) > India
+Mentor > What is your goal for it? For example a score or a rank.
+   | (intake step, no graph run; next step: goal)
+
+Kabir (fictional) > a government medical seat
+Mentor > When is the exam? Give a date like 2027-02-15, or say "not sure".
+   | (intake step, no graph run; next step: date)
+
+Kabir (fictional) > 2027-05-03
+Mentor > I could not find "NEET" (India). I found no official website for it through public sources, so I will not guess. Check the exam name and country. You can name a different exam, or say "continue without research" and I will plan from your date and goal only, without any exam facts.
+   | (intake step, no graph run; next step: exam)
+
+# Meera (fictional): an exam that does not exist
+
+Meera (fictional) > hi
+Mentor > Hi Meera. Before I plan anything I need to know your exam. Which exam are you preparing for?
+   | (intake step, no graph run; next step: exam)
+
+Meera (fictional) > Zorbian National Test
+Mentor > Thanks. Which country is Zorbian National Test in?
+   | (intake step, no graph run; next step: country)
+
+Meera (fictional) > India
+Mentor > What is your goal for it? For example a score or a rank.
+   | (intake step, no graph run; next step: goal)
+
+Meera (fictional) > pass with distinction
+Mentor > When is the exam? Give a date like 2027-02-15, or say "not sure".
+   | (intake step, no graph run; next step: date)
+
+Meera (fictional) > 2027-03-01
+Mentor > I could not find "Zorbian National Test" (India). I found no official website for it through public sources (no entity found), so I will not guess. Check the exam name and country. You can name a different exam, or say "continue without research" and I will plan from your date and goal only, without any exam facts.
+   | (intake step, no graph run; next step: exam)
+
+Meera (fictional) > continue without research
+Mentor > Meera, I have not researched Zorbian National Test (India): I could not research it, and I won't guess facts about it. I have no syllabus, weightage or official dates for it.
+         I'll use your exam date 2027-03-01, which is yours, not an official one (128 days from 2026-10-24).
+         Your plan is ranked from your saved study records and the marks weights stored in them, not from anything I researched about Zorbian National Test. I have no notes to quiz you from for it.
+         Say "plan my study for today". You can say "change my exam to <name>" later to try the lookup again.
+   | (intake step, no graph run; next step: done)

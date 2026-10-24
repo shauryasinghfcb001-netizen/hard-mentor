@@ -78,6 +78,11 @@ npm run proof:forget
 
 Reference output: `evidence/quiz-conversation-20261023-201802.txt`. The `-201747` file is an earlier, superseded run.
 
+## Web exam research (2026-10-24, local commit, not pushed)
+
+`src/context/webResearch.ts` is a real `ResearchSource` (`npm run chat <dir> -- --web`, or `node --import tsx scripts/research-probe.ts "<exam>" "<country>"`). Discovery asks Wikidata's public API (no key) ONE question, the exam name; it returns a nominated official site. That site is read only if its host is under a government/education suffix (gov, gov.xx, nic.in, ac.xx, edu ...); a plain .org/.com site (e.g. cisce.org) is never read or called official. Facts carry URL, retrieval time, whether the exam year appears in a sentence naming the exam, and the quoted sentence. An exam date is promoted only from one plain sentence naming the exam, in the right year and in the future; ranges, negations, postponements and several dates stay unknown. Bounds: https only, public IPs, robots.txt, 4 pages, 400 KB, 8 s, 403/429/5xx/challenge stops that host for 10 minutes.
+Limits: Wikidata is community-edited (not an authority); DNS is checked then fetch resolves again (no pinned IP without a new package); only HTML pages are read (no PDFs); keyword rules, not a model; JEE Main's own site returned 403 to us, so only the organizer's (NTA) homepage was read and no 2027 date was found. Only the exam name leaves the machine. Independent review (one subagent) found 4 HIGH, 5 MED issues; all material ones fixed and covered in `test/webResearch.test.ts`.
+
 ## Next incomplete task
 
 Done and committed locally (1d896cf, 8f36f93, 8fa391c; not pushed): intake corrections after onboarding; conversational "turn memory off/on" (stored memories kept, still listable and forgettable); "continue without research" for exams the offline list lacks (no exam facts claimed); honest reply for a student with no study records. All rule-based; fixture exam list only. Tests: 90 pass. Next unblocked: none; live exam research (needs network approval) is the next dependency.

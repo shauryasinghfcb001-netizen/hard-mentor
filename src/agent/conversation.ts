@@ -105,7 +105,7 @@ function strip(text: string, lead: RegExp): string {
 function describeResolved(ctx: ExamContext, today: string): string {
   if (ctx.research.kind === "none") {
     return [
-      `I have not researched ${ctx.exam.name} (${ctx.exam.country}): I can't look it up yet, and I won't guess facts about it. I have no syllabus, weightage or official dates for it.`,
+      `I have not researched ${ctx.exam.name} (${ctx.exam.country}): I could not research it, and I won't guess facts about it. I have no syllabus, weightage or official dates for it.`,
       ctx.examDate ? `I'll use your exam date ${ctx.examDate.value}, which is yours, not an official one (${daysUntil(ctx.examDate.value, today)} days from ${today}).` : `No exam date yet: I'll assume ${ASSUMED_DAYS_TO_EXAM} days for urgency until you tell me.`,
       `Your plan is ranked from your saved study records and the marks weights stored in them, not from anything I researched about ${ctx.exam.name}. I have no notes to quiz you from for it.`,
       `Say "plan my study for today". You can say "change my exam to <name>" later to try the lookup again.`,
@@ -113,11 +113,17 @@ function describeResolved(ctx: ExamContext, today: string): string {
   }
   const mock = ctx.research.kind === "fixture";
   const lines = [
-    `got it: ${ctx.exam.name} (${ctx.exam.body}), ${ctx.resolvedBy === "student choice" ? "as you chose" : ctx.resolvedBy}.`,
+    `got it: ${ctx.exam.name} (${ctx.research.kind === "web" ? `run by ${ctx.exam.body}, per Wikidata, not verified` : ctx.exam.body}), ${ctx.resolvedBy === "student choice" ? "as you chose" : ctx.resolvedBy}.`,
     mock
       ? "What I know about it comes from a small offline list I was given, not from the web, so none of it is verified:"
-      : "What I found:",
-    ...ctx.facts.map((f) => `- ${f.key}: ${f.value} (${f.status.toUpperCase()}: ${f.why}; source ${f.source.url}, retrieved ${f.source.retrievedAt ?? "never"})`),
+      : ctx.research.pages?.length
+        ? `What I found, read just now from ${ctx.research.pages.length} official page(s) (the site address was nominated by Wikidata and I checked it is a government or education domain; check the link yourself):`
+        : "I could not read any official page for this exam, so I have no verified facts. All I have is below:",
+    ...ctx.facts.map((f) => `- ${f.key}: ${f.value} (${f.status.toUpperCase()}: ${f.why}; source ${f.source.url}, retrieved ${f.source.retrievedAt ?? "never"}; ${f.source.note})`),
+    ...(ctx.research.limits ?? []).map((l) => `- not found / limit: ${l}`),
+    ...(ctx.examDate?.origin === "verified-official" && ctx.goal.statedExamDate && ctx.goal.statedExamDate !== ctx.examDate.value
+      ? [`You said ${ctx.goal.statedExamDate}; the official page says ${ctx.examDate.value}. I use the official one and you can correct me if the page is outdated.`]
+      : []),
     ctx.examDate
       ? `Exam date ${ctx.examDate.value} is ${ctx.examDate.origin === "student-stated" ? "your date, not an official one" : "the official date"} (${daysUntil(ctx.examDate.value, today)} days from ${today}).`
       : `No exam date yet: I'll assume ${ASSUMED_DAYS_TO_EXAM} days for urgency until you tell me.`,
@@ -253,7 +259,8 @@ async function applyCorrection(env: ConversationEnv, s: Session, c: Correction):
   s.exam = next;
   return {
     note: [
-      `Updated your ${c.field}: you are now on ${next.exam.name} (${next.exam.body}). What I know about it comes from the same small offline list, so it is unverified.`,
+      `Updated your ${c.field}: you are now on ${next.exam.name} (${next.exam.body}). ${next.research.kind === "web" ? "I read public pages just now:" : "What I know about it comes from the same small offline list, so it is unverified."}`,
+      ...(next.research.kind === "web" ? [...next.facts.map((f) => `- ${f.key}: ${f.value} (${f.status.toUpperCase()}; source ${f.source.url}, retrieved ${f.source.retrievedAt})`), ...(next.research.limits ?? []).map((l) => `- not found / limit: ${l}`)] : []),
       kept.length
         ? `The notes I used for ${exam.exam.name} (${kept.join(", ")}) do not apply to ${next.exam.name}. Your saved results and quiz history are kept as they were and are NOT relabeled for the new exam. I have no syllabus for it, so I can't tell which saved topics still apply.`
         : `Your saved results and quiz history are kept as they were.`,
