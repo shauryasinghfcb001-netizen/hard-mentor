@@ -4,6 +4,7 @@
 // showing a made-up query.
 
 import type { MentorState } from "./graph.ts";
+import type { Comparison } from "./modelSafety.ts";
 import type { Reason } from "./planner.ts";
 
 export interface WhyCard {
@@ -14,6 +15,8 @@ export interface WhyCard {
   sql: string | null;
   /** data source label, present only when the caller supplied provenance */
   source?: string;
+  /** present only when the validating model planner drafted the last plan: baseline beside the model proposal's status */
+  comparison?: Comparison;
 }
 
 function reasonsFor(s: MentorState): Reason[] {
@@ -44,12 +47,30 @@ export function buildWhyCard(s: MentorState): WhyCard {
     loop: s.trace.map((t, i) => `${i + 1}. [${t.node}] ${t.detail}`),
     sql: prov?.sql ?? null,
     ...(prov ? { source: prov.source } : {}),
+    ...(s.draft?.comparison ? { comparison: s.draft.comparison } : {}),
   };
+}
+
+const list = (blocks: string[]) => (blocks.length ? blocks.join(", ") : "(no blocks)");
+
+/** What was sent, from the comparison status and the graph outcome. A proposal is "used" only when validated and sent. */
+function comparisonLines(c: Comparison, outcome: string): string[] {
+  const p = c.proposal;
+  const lines = ["Plan comparison:", `  Rule baseline: ${c.baseline.decision}: ${list(c.baseline.blocks)}`];
+  if (p.status === "validated") lines.push(`  Model proposal: validated: ${p.decision}: ${list(p.blocks ?? [])}`);
+  else if (p.status === "rejected") lines.push(`  Model proposal: rejected (${[...new Set(p.issues.map((i) => i.split(":")[0]))].join(", ")}); not used, not shown as a plan`);
+  else if (p.status === "model_error") lines.push(`  Model proposal: model error (${p.issues.join("; ")}); no proposal`);
+  else lines.push(`  Model proposal: ${p.status}`);
+  if (outcome === "fallback") lines.push("  Plan sent: safe fallback (the plan checker rejected every draft)");
+  else if (p.status === "validated") lines.push("  Plan sent: the model's validated proposal");
+  else lines.push("  Plan sent: the rule baseline");
+  return lines;
 }
 
 export function renderWhyCard(card: WhyCard): string {
   const lines = [`Decision: ${card.decision} (${card.outcome})`, "Why:"];
   for (const r of card.reasons) lines.push(`  - ${r.text}  [${r.ref.kind}: ${r.ref.id}]`);
+  if (card.comparison) lines.push(...comparisonLines(card.comparison, card.outcome));
   lines.push("Loop:", ...card.loop.map((l) => `  ${l}`));
   if (card.source !== undefined) lines.push(`Source: ${card.source}`);
   lines.push(`SQL: ${card.sql ?? "(not available: Zetaris federation not wired yet)"}`);

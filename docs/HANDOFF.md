@@ -1,91 +1,71 @@
-# Hard Mentor: honest handoff
+# Hard Mentor: portable handoff
 
-Written 2026-10-24 on branch `checkpoint/research-gate-20261024`. This file lists what is real, what is rule-based, what is only mock-tested and what is not done. It contains no credentials, tokens, org IDs or default logins. The older root `HANDOFF.md` is the milestone-9 checkpoint and is not replaced.
+Updated 2026-10-25 on branch `wip/offline-loop`. Lists what is real, rule-based, mock-tested and not done. Contains no credentials, tokens, org IDs or logins. The older root `HANDOFF.md` is the milestone-9 checkpoint and is not replaced.
 
 ## Purpose
 
-Hard Mentor is a CBSE Class 11-12 study agent for the Open Agent Hackathon 2026, Track 03 (Reasoning Architecture). One agent per student turns study data (mastery, marks weight, days to exam) into a daily plan, shows why it chose that plan, answers doubts from NCERT notes with citations, runs short quizzes that update mastery, and keeps per-student memory that the student can list and forget. A distress message bypasses everything else. Everything that has run so far ran offline on synthetic data. No live model, no live Zetaris query and no live Meterless runtime has ever been called. The agent is not ready to submit.
+Hard Mentor is a CBSE Class 11-12 CLI study agent (Open Agent Hackathon 2026, Track 03). Per student it turns study data (mastery, marks weight, days to exam) into a daily plan, shows why, answers NCERT doubts with citations, runs short quizzes that update mastery, and keeps per-student memory the student can list and forget. A distress message bypasses everything else. Everything run so far was offline on synthetic data. Not ready to submit.
 
-## Status table
+## Architecture and key files
 
-| Area | Status | Evidence in repo |
-|---|---|---|
-| LangGraph flow, rule planner, checker | REAL (offline) | `src/agent/graph.ts`, `planner.ts`, `src/core/`; `npm test` |
-| Why card (data rows, quiz citations) | REAL (offline) | `src/agent/whyCard.ts`; CSV default |
-| Why card source/SQL provenance | MOCK-TESTED | `test/why-card-provenance.test.ts`; not reached from `conversation.ts` |
-| H-MEM student memory (remember, list, forget) | REAL (offline) | `src/memory/studentMemory.ts`; forget and Riya proofs in `evidence/` |
-| NCERT Ch 1 doubt answering with citations | RULE-BASED | BM25 over 14 notes, phrase gate; not a model |
-| Distress override | RULE-BASED | `src/core/distress.ts`; keyword/phrase rules |
-| Priority score and plan ordering | RULE-BASED | `src/core/priority.ts` |
-| Conversational quiz loop | REAL (offline) | `src/quiz/`; scores written to the local CSV |
-| Study data source | REAL for CSV only | `src/data/studyData.ts`, `seed/study-records.csv` (synthetic) |
-| Zetaris study data connector | MOCK-TESTED | `src/data/zetarisStudyData.ts`, `test/zetaris-study-data.test.ts`; fake fetch only |
-| `scripts/zetaris-query.ts` runner | MOCK-TESTED | formatting tests only; never run against a server |
-| Model planner (`HM_PLANNER=model`) | MOCK-TESTED | `src/agent/modelPlanner.ts`; never called against a real model |
-| LLM client (NVIDIA, OpenRouter) | MOCK-TESTED | `test/llm-client.test.ts` |
-| Meterless Runtime adapter | MOCK-TESTED | `src/llm/meterless.ts`, `test/meterless.test.ts`; mocked fetch, not Meterless connection evidence |
-| Exam research, fixture list | MOCK | `src/context/fixtureExams.ts`; facts UNVERIFIED |
-| Web exam research | MOCK-TESTED, default OFF | `src/context/webResearch.ts`; mocked fetch and DNS; gate off unless `HM_LIVE_RESEARCH=1` |
-| Eval sets | REAL (offline) | `eval/`; frozen v2 and held-out cases are regression checks |
-| Live Zetaris student query | NOT DONE | no student table is loaded |
-| Zetaris connector wired into conversation | NOT DONE | `src/agent/conversation.ts` builds the CSV source |
-| Quiz write-back to Zetaris | NOT DONE | `src/quiz/writeBack.ts` writes CSV only |
-| Any live model or Nightshift call | NOT DONE | never made |
-| Telegram, nudges, consent flow, dashboard | NOT DONE | not started |
-| README, slides, video, submission | NOT DONE | the README is still the starter README |
+- `src/agent/graph.ts`, `conversation.ts`: LangGraph flow and chat turn handling.
+- `src/agent/planner.ts`: `Planner` interface, rule planner (default), `Draft`. `Draft.comparison` is a new optional exported field.
+- `src/agent/modelPlanner.ts`: `createModelPlanner`, `plannerFromEnv` (`HM_PLANNER=model` uses the existing model factory plus the validating planner).
+- `src/agent/modelSafety.ts`: `validateModelDraft`, `runModelProposal`, `compareProposal`. Outcomes: validated, rejected, model_error, fallback.
+- `src/agent/whyCard.ts`: why card. In model mode it shows baseline versus model proposal with status validated, rejected or error. Rejected raw model text is not shown.
+- `scripts/chat.ts`: CLI entry (`npm run chat`).
+- `src/core/`: priority score, checker, distress rules. `src/quiz/`: quiz loop (writes CSV only).
+- `src/memory/studentMemory.ts`: H-MEM student memory, offline.
+- `src/data/studyData.ts` (CSV, default) and `src/data/zetarisStudyData.ts` (opt-in connector).
+- `src/llm.ts`, `src/llm/client.ts`, `src/llm/meterless.ts`: model factory and providers.
+- `src/context/`: exam research (fixture list; web research gated off). `eval/`: regression sets.
 
-## Commits on this branch
+## Test results (this session, run with a scrubbed environment: `env -i` with PATH and HOME only)
 
-From `git log --oneline --reverse`:
+- `npm test`: 219 pass, 0 fail, 0 cancelled, 0 skipped (6 suites).
+- `npm run typecheck`: exit 0.
+- Model-related new tests (`test/model-wiring`, `model-compare`, `model-safety`, `chat-cli`) replace `fetch` with a stub that fails the test if called, and pass the CLI an explicit env object.
 
-```
-bf6f609 Checkpoint: Hard Mentor through the conversational quiz-to-plan loop
-1d896cf Let a student correct intake answers after onboarding
-8f36f93 Add memory on/off control and a no-research path for unknown exams
-8fa391c Fix verifier findings: quiz-open date correction, narrower memory and correction wording
-2dc968a Update handoff after controls pass
-5a6d703 Add bounded web exam research from public official pages
-568f82f Add default-OFF gate over all outbound exam-research traffic
-7f1b152 Add Zetaris study data connector and runner (offline mock-tested only)
-20a8a83 Add optional source/SQL provenance to why-card (CSV default unchanged, offline mock-tested)
-8a2c621 Align Meterless adapter to Runtime provider contract (offline mock-tested only)
-```
+## Commands (verified in package.json)
 
-## Environment variable names
+- `npm test`, `npm run typecheck`, `npm run chat`
+- Offline demos and proofs: `demo:chat`, `demo:csv`, `demo:journey`, `demo:turns`, `demo:swap`, `proof:forget`, `proof:riya`, `notebook`
+- `eval:heldout`, `eval:frozen`: offline eval runs, write to `evidence/`
+- `smoke:model`: loads `.env` and calls a live provider. Do not run without explicit approval.
+- `node --import tsx scripts/zetaris-query.ts <studentId>`: live Zetaris query. Not run by this checkpoint.
 
-Names only. Set values in a local `.env` that is never committed. `.env.example` lists the safe defaults.
+## Default and opt-in behavior
 
-- `HM_ZETARIS_URL`
-- `HM_ZETARIS_USER`
-- `HM_ZETARIS_PASSWORD`
-- `HM_ZETARIS_TABLE`
-- `HM_LIVE_RESEARCH` (research gate; unset means OFF)
-- `LLM_PROVIDER` (`nvidia`, `openrouter` or `meterless`)
-- `HM_PLANNER` (`rules` is the default; `model` turns on the model planner)
-- `METERLESS_STATE_DIR`
+- Default: rule planner (`rule-planner-v1`), local CSV study data, no network. Default chat output is byte-identical to the golden file `test/fixtures/chat-default.golden.txt`.
+- `HM_PLANNER=model`: model proposal is validated, then shown beside the baseline. If no model can be built, a message is printed first, the banner is labelled, and the rule plan is used. On a model error or a rejected draft, the baseline is the plan.
+- `HM_STUDY_SOURCE=zetaris`: opt-in Zetaris read, fails closed, no CSV fallback. Any other value than `csv` or `zetaris` throws.
+- `HM_LIVE_RESEARCH=1`: opt-in web exam research. Keep OFF (DNS rebinding flaw is not fixed in `src/context/webResearch.ts`).
 
-## How to run
+## Configuration variable names (names only; values go in a local, uncommitted `.env`; see `.env.example`)
 
-- Tests: `npm test` (last run: 170 pass, 0 fail, 5 suites, all offline).
-- Typecheck: `npm run typecheck` (last run: clean).
-- Zetaris runner: `node --import tsx scripts/zetaris-query.ts <studentId>`. It reads the four `HM_ZETARIS_*` variables, runs one query and prints the rows and the exact SQL. On any failure it prints "Zetaris unavailable" and exits 1. It has no CSV fallback. It has never been run against a real server, so do not read a green test run as proof that it works live.
-- Other scripts are listed in `package.json` (`demo:chat`, `demo:csv`, `demo:journey`, `proof:forget`, `proof:riya`). They use the rule planner and local data.
+`HM_PLANNER`, `HM_STUDY_SOURCE`, `HM_LIVE_RESEARCH`, `HM_ZETARIS_URL`, `HM_ZETARIS_USER`, `HM_ZETARIS_PASSWORD`, `HM_ZETARIS_TABLE`, `LLM_PROVIDER` (`nvidia`, `openrouter`, `meterless`), `LLM_MODEL`, `LLM_BASE_URL`, `NVIDIA_API_KEY`, `OPENROUTER_API_KEY`, `METERLESS_MODEL`, `METERLESS_STATE_DIR`.
+
+## Mocked versus demonstrated
+
+- Demonstrated offline (synthetic data): rule planner, checker, why card, quiz loop, H-MEM memory list and forget (`evidence/`), NCERT BM25 doubts, distress override.
+- Mock-tested only (stubbed model or fake fetch): model planner and validation, comparison output, LLM client, Meterless adapter, Zetaris connector, `scripts/zetaris-query.ts` formatting, web research.
+- Not demonstrated: any live model call, any Nightshift call, any working H-MEM integration beyond the offline memory module, any in-product Zetaris use.
+- Zetaris: the user supplied historical output of one successful connector read. That is user-supplied historical evidence, not a run performed by this checkpoint or by any test. In-product Zetaris use remains unproven: the connector is not wired into the default conversation, quiz results do not write back, and no student table is loaded.
+- Provider permission: under-18 eligibility is unconfirmed for any model provider. Confirm before any live call.
+
+## Quarantine
+
+Incompatible Antigravity drafts are preserved as `.txt` files in `docs/drafts/quarantine/` (`modelProposal.ts.txt`, `model-proposal.test.ts.txt`). They are not compiled, not tested, and not part of this commit. Other `docs/drafts/` files (README, sponsor explanation, video script) are also uncommitted drafts.
 
 ## Known gaps
 
-- No live Zetaris student query has ever run. The connector contract comes from one observed run; error shapes, pagination, token expiry and table loading are unproven.
-- No student table is loaded in Zetaris.
-- The connector is not wired into `src/agent/conversation.ts`. It still builds the CSV source, and it drops the source/SQL provenance when it builds the why card.
-- Quiz results still write to the CSV, not to Zetaris.
-- No live Nightshift or model call has ever been made. The model planner and the Meterless adapter are tested against mocked HTTP only.
-- Research gate is OFF by default. When it is turned on, the DNS rebinding flaw is NOT fixed: `src/context/webResearch.ts` checks the host's DNS answer for public addresses, then `fetch` resolves the name again, so a hostile name could answer differently the second time. Pinning the resolved address needs a new package or a custom agent. Keep `HM_LIVE_RESEARCH` unset until it is fixed.
-- Exam research facts are unverified, and web research reads HTML only.
-- The Meterless adapter fixes the app id to `hard-mentor`, drops any URL path prefix, and does not check the chosen model against the `/v1/models` list. It can also read a token from `<METERLESS_STATE_DIR>/proxy-token`.
-- The chat is a terminal demonstration, not a student interface.
-- Known eval failures from the older handoff still stand (for example the "in place of" swap phrase).
+- README is still the starter README. No slides, video or submission.
+- Telegram, nudges, consent flow, dashboard: not started.
+- Exam research facts are unverified. Some older eval failures stand (for example the "in place of" swap phrase).
+- Meterless adapter fixes app id `hard-mentor` and does not check the model against `/v1/models`.
 
-## Open external gates
+## Next three steps for the next coding tool
 
-- Zetaris: the method for loading a student table is still unknown.
-- Nightshift: the M3 build and its token are not available yet.
-- Under-18 provider eligibility: not confirmed. The students are minors, so confirm that each model provider allows this use before any live call.
+1. Decide the fate of the quarantined drafts: either port the useful claim-validation ideas into `src/agent/modelSafety.ts` with tests against the real `Planner` and `ChatModel` interfaces, or delete the `.txt` files. Do not copy them in as-is.
+2. With explicit user approval and provider eligibility confirmed, run one live `HM_PLANNER=model` turn on synthetic data and record the real validated/rejected/error outcome. Until then keep claiming mock-tested only.
+3. Wire `HM_STUDY_SOURCE=zetaris` into a live read test with a loaded student table, keep the CSV path as the default, and add write-back only after the read is demonstrated in-product.

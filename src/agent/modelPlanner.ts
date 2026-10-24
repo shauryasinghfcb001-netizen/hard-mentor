@@ -6,6 +6,7 @@
 
 import { z } from "zod";
 import type { ChatModel } from "../llm/client.ts";
+import { compareProposal, validateModelDraft, type ProposalIssue, type ProposalRun } from "./modelSafety.ts";
 import { rulePlanner, type Draft, type Planner, type PlannerInput } from "./planner.ts";
 
 const DraftSchema = z.object({
@@ -81,32 +82,62 @@ export function parseModelDraft(text: string, input: PlannerInput): Draft {
 export interface ModelPlannerEvents {
   onCall?: (info: { latencyMs: number; model: string; provider: string; attempts: number }) => void;
   onFallback?: (reason: string) => void;
+  /** one call per draft: modelSuccess is true only when the model's own draft passed validation and is used */
+  onProposal?: (info: { outcome: "validated" | "rejected" | "model_error"; modelSuccess: boolean; issues: ProposalIssue[] }) => void;
 }
 
-export function createModelPlanner(model: ChatModel, events: ModelPlannerEvents = {}): Planner {
+export interface ModelPlannerOptions {
+  /**
+   * true = the model draft must pass validateModelDraft (modelSafety.ts) before it is used: malformed, unknown
+   * topic, over time, and evidence that is missing, ambiguous, from another student or an unknown ref.field
+   * all fall back to the rule draft, labelled in producedBy. false (default of createModelPlanner, kept for
+   * existing callers) only strips unknown ids from evidence. plannerFromEnv turns it on.
+   */
+  validate?: boolean;
+}
+
+export function createModelPlanner(model: ChatModel, events: ModelPlannerEvents = {}, opts: ModelPlannerOptions = {}): Planner {
+  const ruleDraft = async (input: PlannerInput, why: string, run: Pick<ProposalRun, "outcome" | "issues" | "error">) => {
+    const baseline = await rulePlanner.draft(input);
+    const producedBy = `${rulePlanner.name} (rules; ${why})`;
+    // The comparison exists only with validation on; the lenient default returns exactly what it always did.
+    return opts.validate ? { ...baseline, producedBy, comparison: compareProposal({ ...run, baseline, proposal: null }) } : { ...baseline, producedBy };
+  };
   return {
     name: `model:${model.provider}/${model.model}`,
     kind: "model",
     async draft(input) {
+      let text: string;
       try {
         const res = await model.chat([
           { role: "system", content: SYSTEM },
           { role: "user", content: buildPlannerPrompt(input) },
         ]);
         events.onCall?.(res);
-        return parseModelDraft(res.text, input);
+        text = res.text;
+        if (!opts.validate) return parseModelDraft(text, input);
       } catch (err) {
         const reason = (err as Error).message.slice(0, 200);
         events.onFallback?.(reason);
-        const draft = await rulePlanner.draft(input);
-        return { ...draft, producedBy: `${rulePlanner.name} (rules; model failed: ${reason})` };
+        events.onProposal?.({ outcome: "model_error", modelSuccess: false, issues: [] });
+        return ruleDraft(input, `model failed: ${reason}`, { outcome: "model_error", issues: [], error: reason });
       }
+      const v = validateModelDraft(text, { rows: input.ranked, hoursPerDay: input.hoursPerDay, memories: input.memories });
+      if (v.ok) {
+        events.onProposal?.({ outcome: "validated", modelSuccess: true, issues: [] });
+        const baseline = await rulePlanner.draft(input);
+        return { ...v.draft, comparison: compareProposal({ outcome: "validated", baseline, proposal: v.draft, issues: [] }) };
+      }
+      const reason = v.issues.map((i) => `${i.code}: ${i.detail}`).join("; ").slice(0, 300);
+      events.onFallback?.(reason);
+      events.onProposal?.({ outcome: "rejected", modelSuccess: false, issues: v.issues });
+      return ruleDraft(input, `model rejected: ${reason}`, { outcome: "rejected", issues: v.issues });
     },
   };
 }
 
-/** HM_PLANNER=model turns the model planner on; anything else keeps the rule planner. */
-export function plannerFromEnv(env: NodeJS.ProcessEnv, model: ChatModel | null): Planner {
-  if (env.HM_PLANNER === "model" && model) return createModelPlanner(model);
+/** HM_PLANNER=model turns the model planner on, with validation; anything else keeps the rule planner. */
+export function plannerFromEnv(env: NodeJS.ProcessEnv, model: ChatModel | null, events: ModelPlannerEvents = {}): Planner {
+  if (env.HM_PLANNER === "model" && model) return createModelPlanner(model, events, { validate: true });
   return rulePlanner;
 }

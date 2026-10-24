@@ -4,6 +4,7 @@
 
 import type { CheckResult, DraftPlan } from "../core/checker.ts";
 import { MASTERED_AT, type RankedTopic } from "../core/priority.ts";
+import type { Comparison } from "./modelSafety.ts";
 
 export type Intent = "distress" | "swap_request" | "plan" | "doubt" | "memory_list" | "memory_forget" | "quiz_start" | "quiz_answer" | "quiz_cancel";
 
@@ -24,6 +25,8 @@ export interface Draft extends DraftPlan {
   reasons: Reason[];
   /** who actually produced this draft, when it differs from the planner (model fallback) */
   producedBy?: string;
+  /** set only by the validating model planner: rule baseline beside the model's proposal status (see compareProposal) */
+  comparison?: Comparison;
 }
 
 export interface PlannerInput {
