@@ -1,6 +1,7 @@
 // Why card: built only from the graph's final state and trace rows, never
-// from free text. Federated SQL is not available until Zetaris is wired, so
-// `sql` stays null instead of showing a made-up query.
+// from free text. `source` and `sql` come only from the provenance the caller
+// put on the student context; with none supplied `sql` stays null instead of
+// showing a made-up query.
 
 import type { MentorState } from "./graph.ts";
 import type { Reason } from "./planner.ts";
@@ -11,6 +12,8 @@ export interface WhyCard {
   reasons: Reason[];
   loop: string[];
   sql: string | null;
+  /** data source label, present only when the caller supplied provenance */
+  source?: string;
 }
 
 function reasonsFor(s: MentorState): Reason[] {
@@ -33,12 +36,14 @@ function decisionFor(s: MentorState): string {
 }
 
 export function buildWhyCard(s: MentorState): WhyCard {
+  const prov = s.student?.provenance;
   return {
     decision: decisionFor(s),
     outcome: s.outcome,
     reasons: reasonsFor(s),
     loop: s.trace.map((t, i) => `${i + 1}. [${t.node}] ${t.detail}`),
-    sql: null,
+    sql: prov?.sql ?? null,
+    ...(prov ? { source: prov.source } : {}),
   };
 }
 
@@ -46,6 +51,7 @@ export function renderWhyCard(card: WhyCard): string {
   const lines = [`Decision: ${card.decision} (${card.outcome})`, "Why:"];
   for (const r of card.reasons) lines.push(`  - ${r.text}  [${r.ref.kind}: ${r.ref.id}]`);
   lines.push("Loop:", ...card.loop.map((l) => `  ${l}`));
+  if (card.source !== undefined) lines.push(`Source: ${card.source}`);
   lines.push(`SQL: ${card.sql ?? "(not available: Zetaris federation not wired yet)"}`);
   return lines.join("\n");
 }

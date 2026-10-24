@@ -32,6 +32,8 @@ export interface StudentContext {
   topics: TopicState[];
   /** exam, country and goal resolved by researchExam; absent for older callers */
   exam?: ExamContext;
+  /** where `topics` came from and the SQL that source ran; absent = nothing is claimed, the why card shows no source */
+  provenance?: { source: string; sql: string | null };
 }
 
 export interface GraphDeps {
