@@ -111,11 +111,23 @@ describe("OFFLINE MOCK - not Zetaris connection evidence: fail closed", () => {
   test("network error on login", async () => {
     await failure(src(mock({ throws: true }).f).topicsFor("a"), /login request failed/);
   });
+  test("login 404 bad credentials message", async () => {
+    await failure(
+      src(mock({ status: 404, body: { message: PASS } }).f).topicsFor("a"),
+      /login returned HTTP 404 \(can indicate bad credentials on this platform\) \(localhost:3000\/api\/auth\/login\)/
+    );
+  });
   test("login non-2xx", async () => {
-    await failure(src(mock({ status: 401, body: { message: PASS } }).f).topicsFor("a"), /login returned HTTP 401/);
+    await failure(
+      src(mock({ status: 401, body: { message: PASS } }).f).topicsFor("a"),
+      /login returned HTTP 401 \(localhost:3000\/api\/auth\/login\)/
+    );
   });
   test("login not JSON", async () => {
-    await failure(src(mock({ raw: "<html>" }).f).topicsFor("a"), /not JSON/);
+    await failure(
+      src(mock({ raw: "<html>" }).f).topicsFor("a"),
+      /login response was not JSON \(HTTP 200\) \(localhost:3000\/api\/auth\/login\)/
+    );
   });
   for (const [label, body] of [
     ["no idToken", { orgId: 1 }],
@@ -136,10 +148,16 @@ describe("OFFLINE MOCK - not Zetaris connection evidence: fail closed", () => {
     await failure(src(mock({ body: LOGIN_OK }, { throws: true }).f).topicsFor("a"), /query request failed/);
   });
   test("query non-2xx", async () => {
-    await failure(src(mock({ body: LOGIN_OK }, { status: 500, body: { error: TOKEN } }).f).topicsFor("a"), /query returned HTTP 500/);
+    await failure(
+      src(mock({ body: LOGIN_OK }, { status: 500, body: { error: TOKEN } }).f).topicsFor("a"),
+      /query returned HTTP 500 \(localhost:3000\/api\/proxy\/query\/sql\/start\)/
+    );
   });
   test("query not JSON", async () => {
-    await failure(src(mock({ body: LOGIN_OK }, { raw: "oops" }).f).topicsFor("a"), /not JSON/);
+    await failure(
+      src(mock({ body: LOGIN_OK }, { raw: "oops" }).f).topicsFor("a"),
+      /query response was not JSON \(HTTP 200\) \(localhost:3000\/api\/proxy\/query\/sql\/start\)/
+    );
   });
   for (const [label, body] of [
     ["records missing", { totalCount: 0, totalPages: 1 }],

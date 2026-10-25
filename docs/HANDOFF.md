@@ -1,6 +1,6 @@
 # Hard Mentor: portable handoff
 
-Updated 2026-10-25 (progress slice added) on branch `wip/offline-loop`. Lists what is real, rule-based, mock-tested and not done. Contains no credentials, tokens, org IDs or logins. The older root `HANDOFF.md` is the milestone-9 checkpoint and is not replaced.
+Updated 2026-10-25 (live-integration batch slice) on branch `wip/offline-loop`. Lists what is real, rule-based, mock-tested and not done. Contains no credentials, tokens, org IDs or logins. The older root `HANDOFF.md` is the milestone-9 checkpoint and is not replaced.
 
 ## Purpose
 
@@ -14,6 +14,7 @@ Hard Mentor is a CBSE Class 11-12 CLI study agent (Open Agent Hackathon 2026, Tr
 - `src/agent/modelSafety.ts`: `validateModelDraft`, `runModelProposal`, `compareProposal`. Outcomes: validated, rejected, model_error, fallback.
 - `src/agent/whyCard.ts`: why card. In model mode it shows baseline versus model proposal with status validated, rejected or error. Rejected raw model text is not shown.
 - `scripts/chat.ts`: CLI entry (`npm run chat`).
+- `scripts/live-loop.ts`: Standalone live integration runner (Nightshift probe, Zetaris fail-closed query, model proposal validation, rule baseline comparison, scored quiz, progress read-back, redacted receipt).
 - `src/core/`: priority score, checker, distress rules. `src/quiz/`: quiz loop (writes CSV only).
 - `src/memory/studentMemory.ts`: H-MEM student memory, offline.
 - `src/data/studyData.ts` (CSV, default) and `src/data/zetarisStudyData.ts` (opt-in connector).
@@ -22,14 +23,15 @@ Hard Mentor is a CBSE Class 11-12 CLI study agent (Open Agent Hackathon 2026, Tr
 
 ## Test results (this session, run with a scrubbed environment: `env -i` with PATH and HOME only)
 
-- `npm test`: 227 pass, 0 fail, 0 cancelled, 0 skipped (219 before the progress slice + 8 in `test/progress.test.ts`).
+- `npm test`: 237 pass, 0 fail, 0 cancelled, 0 skipped (227 baseline + 3 in `test/memory-off.test.ts` + 4 in `test/wiring-failures.test.ts` + 3 in `test/alias-mapping.test.ts`).
 - `npm run typecheck`: exit 0.
 - Progress tests are offline, rule planner only, fictional students, fetch stub fails the test if called.
-- Model-related new tests (`test/model-wiring`, `model-compare`, `model-safety`, `chat-cli`) replace `fetch` with a stub that fails the test if called, and pass the CLI an explicit env object.
+- Model-related tests (`test/model-wiring`, `model-compare`, `model-safety`, `chat-cli`, `memory-off`, `wiring-failures`, `alias-mapping`) replace `fetch` with a stub that fails the test if called, and pass the CLI an explicit env object.
 
 ## Commands (verified in package.json)
 
 - `npm test`, `npm run typecheck`, `npm run chat`
+- `node --import tsx scripts/live-loop.ts`: Standalone live integration loop runner.
 - Offline demos and proofs: `demo:chat`, `demo:csv`, `demo:journey`, `demo:turns`, `demo:swap`, `proof:forget`, `proof:riya`, `notebook`
 - `eval:heldout`, `eval:frozen`: offline eval runs, write to `evidence/`
 - `smoke:model`: loads `.env` and calls a live provider. Do not run without explicit approval.
@@ -44,15 +46,24 @@ Hard Mentor is a CBSE Class 11-12 CLI study agent (Open Agent Hackathon 2026, Tr
 
 ## Configuration variable names (names only; values go in a local, uncommitted `.env`; see `.env.example`)
 
-`HM_PLANNER`, `HM_STUDY_SOURCE`, `HM_LIVE_RESEARCH`, `HM_ZETARIS_URL`, `HM_ZETARIS_USER`, `HM_ZETARIS_PASSWORD`, `HM_ZETARIS_TABLE`, `LLM_PROVIDER` (`nvidia`, `openrouter`, `meterless`), `LLM_MODEL`, `LLM_BASE_URL`, `NVIDIA_API_KEY`, `OPENROUTER_API_KEY`, `METERLESS_MODEL`, `METERLESS_STATE_DIR`.
+`HM_PLANNER`, `HM_STUDY_SOURCE`, `HM_LIVE_RESEARCH`, `HM_ZETARIS_URL`, `HM_ZETARIS_USER`, `HM_ZETARIS_PASSWORD`, `HM_ZETARIS_TABLE`, `LLM_PROVIDER` (`nvidia`, `openrouter`, `meterless`), `LLM_MODEL`, `LLM_BASE_URL`, `NVIDIA_API_KEY`, `OPENROUTER_API_KEY`, `METERLESS_TOKEN`, `meterless_runtime_token`, `METERLESS_MODEL`, `METERLESS_BASE_URL`, `METERLESS_TIMEOUT_MS`, `METERLESS_STATE_DIR`.
 
-## Mocked versus demonstrated
+## Status Matrix (REAL / RULE-BASED / MOCK-TESTED / NOT DONE)
 
-- Demonstrated offline (synthetic data): rule planner, checker, why card, quiz loop, H-MEM memory list and forget (`evidence/`), NCERT BM25 doubts, distress override.
-- Mock-tested only (stubbed model or fake fetch): model planner and validation, comparison output, LLM client, Meterless adapter, Zetaris connector, `scripts/zetaris-query.ts` formatting, web research.
-- Not demonstrated: any live model call, any Nightshift call, any working H-MEM integration beyond the offline memory module, any in-product Zetaris use.
-- Zetaris: the user supplied historical output of one successful connector read. That is user-supplied historical evidence, not a run performed by this checkpoint or by any test. In-product Zetaris use remains unproven: the connector is not wired into the default conversation, quiz results do not write back, and no student table is loaded.
-- Provider permission: under-18 eligibility is unconfirmed for any model provider. Confirm before any live call.
+| Component | Status | Evidence / Notes |
+|---|---|---|
+| Nightshift Runtime Smoke Test | REAL | Streamed POST /v1/chat/completions returned HTTP 200, WebLLM Llama-3.2-1B, "Ready.", 0 cloud keys. |
+| Historical Zetaris Connector Read | REAL (historical) | User-supplied output of 4 rows from study_records table. Contract observed. |
+| Priority Scoring & Urgency | RULE-BASED | Deterministic formula `(1-mastery)*marks_weight*urgency`. Verified in `src/core/priority.ts`. |
+| Rule Planner Baseline | RULE-BASED | `rulePlanner` generates deterministic study blocks without an LLM. |
+| Deterministic Plan Checker | RULE-BASED | `checkPlan` validates budget, top priority, known topics, tone. |
+| Model Draft Safety Validation | RULE-BASED & MOCK-TESTED | `validateModelDraft` enforces schema, topic existence, student evidence, budget. Rejections fall back to baseline. |
+| Memory-Off Prompt Omission | MOCK-TESTED | `test/memory-off.test.ts` proves `Memories: - (none)` in prompt when memory is off. |
+| Meterless Adapter & Wiring | MOCK-TESTED | Normalizes `<host>/v1`, sends `meterless-app` and `meterless-scope`, supports `METERLESS_TOKEN`, configurable timeout (default 900s). |
+| Zetaris Fail-Closed Connector | MOCK-TESTED | `src/data/zetarisStudyData.ts` throws `Zetaris unavailable`; `converse()` returns `Zetaris unavailable`, never silent CSV. |
+| Live Product Loop Runner | REAL / MOCK-TESTED | `scripts/live-loop.ts` performs Nightshift probe + audit, Zetaris fail-closed query, model proposal validation, quiz attempt, progress read-back. |
+| Live Web Exam Research | NOT DONE (GATED) | `HM_LIVE_RESEARCH=1` kept off due to DNS rebinding vulnerability. |
+| Zetaris Live Write-Back | NOT DONE | Quizzes update local CSV / quiz log; Zetaris write-back not implemented. |
 
 ## Quiz attempts and progress view (this slice, rule planner, offline)
 

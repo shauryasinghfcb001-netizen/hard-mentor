@@ -7,7 +7,8 @@
 // Error shapes, queryToken pagination, column types, token expiry and table
 // loading are unproven, so every unexpected outcome fails closed. There is no
 // CSV fallback: a failure here must never be answered from a local file.
-// Error messages never carry response bodies, tokens, passwords or the org id.
+// Error messages include requested origin (host:port) and path plus HTTP status,
+// but never carry credentials, response bodies, tokens, passwords, org id, or headers.
 
 import { randomUUID } from "node:crypto";
 import type { TopicState } from "../core/priority.ts";
@@ -48,6 +49,10 @@ export function zetarisStudyData(opts: ZetarisOptions = {}): StudyDataSource {
   const doFetch = opts.fetch ?? fetch;
 
   async function post(url: string, headers: Record<string, string>, body: unknown, what: string): Promise<unknown> {
+    const u = new URL(url);
+    const port = u.port || (u.protocol === "https:" ? "443" : "80");
+    const target = `${u.hostname}:${port}${u.pathname}`;
+
     let res: Response;
     try {
       res = await doFetch(url, {
@@ -58,13 +63,18 @@ export function zetarisStudyData(opts: ZetarisOptions = {}): StudyDataSource {
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
     } catch {
-      throw unavailable(`${what} request failed`);
+      throw unavailable(`${what} request failed (${target})`);
     }
-    if (!res.ok) throw unavailable(`${what} returned HTTP ${res.status}`);
+    if (!res.ok) {
+      if (what === "login" && res.status === 404) {
+        throw unavailable(`login returned HTTP 404 (can indicate bad credentials on this platform) (${target})`);
+      }
+      throw unavailable(`${what} returned HTTP ${res.status} (${target})`);
+    }
     try {
       return await res.json();
     } catch {
-      throw unavailable(`${what} response was not JSON`);
+      throw unavailable(`${what} response was not JSON (HTTP ${res.status}) (${target})`);
     }
   }
 

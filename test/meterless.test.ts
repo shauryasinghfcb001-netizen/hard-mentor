@@ -9,7 +9,7 @@ import path from "node:path";
 import { runMentor, type StudentContext } from "../src/agent/graph.ts";
 import { createModelPlanner } from "../src/agent/modelPlanner.ts";
 import { modelFromEnv } from "../src/llm/client.ts";
-import { autoDetectMeterless, meterlessChatModel, meterlessFromEnv, normalizeMeterlessBaseURL, parseConnectLink, probeMeterless } from "../src/llm/meterless.ts";
+import { adaptMeterlessMessages, autoDetectMeterless, meterlessChatModel, meterlessFromEnv, normalizeMeterlessBaseURL, parseConnectLink, probeMeterless } from "../src/llm/meterless.ts";
 import { RIYA_TOPICS } from "../src/synthetic/riya.ts";
 
 const TOKEN = "mt-FAKE-test-token-0000";
@@ -148,6 +148,9 @@ test("env: LLM_PROVIDER=meterless never falls back to NVIDIA or OpenRouter, even
   const m = modelFromEnv({ ...env, meterless_runtime_token: TOKEN });
   assert.equal(m?.provider, "meterless");
   assert.equal(m?.model, "meterless/auto");
+  const m2 = modelFromEnv({ ...env, METERLESS_TOKEN: TOKEN });
+  assert.equal(m2?.provider, "meterless");
+  assert.equal(m2?.model, "meterless/auto");
 });
 
 test("env: token is read from <METERLESS_STATE_DIR>/proxy-token when the key is not set", () => {
@@ -201,7 +204,7 @@ test("OFFLINE MOCK: probe and auto-detect refuse an empty or placeholder token w
   assert.equal(calls.length, 0);
 });
 
-test("OFFLINE MOCK: chat request timeout is 180 s (timer mocked), probe stays short; models request sends bearer + app header, no scope", async () => {
+test("OFFLINE MOCK: chat request timeout is 900 s default (timer mocked), probe stays short; models request sends bearer + app header, no scope", async () => {
   const realTimeout = AbortSignal.timeout;
   const seen: number[] = [];
   AbortSignal.timeout = ((ms: number) => (seen.push(ms), new AbortController().signal)) as typeof AbortSignal.timeout;
@@ -209,13 +212,20 @@ test("OFFLINE MOCK: chat request timeout is 180 s (timer mocked), probe stays sh
     const calls: Call[] = [];
     const f = mockFetch((url) => (url.endsWith("/models") ? { status: 200, body: { data: [{ id: "meterless/auto" }] } } : { status: 200, body: { choices: [{ message: { content: "ok" } }] } }), calls);
     await meterlessChatModel({ token: TOKEN, fetchImpl: f }).chat([{ role: "user", content: "hi" }]);
-    assert.deepEqual(seen, [180_000]);
+    assert.deepEqual(seen, [900_000]);
     await probeMeterless("127.0.0.1:8088", TOKEN, f);
     assert.equal(seen[1], 5_000);
     const h = calls[1].init.headers as Record<string, string>;
     assert.equal(h.authorization, `Bearer ${TOKEN}`);
     assert.equal(h["meterless-app"], "hard-mentor");
     assert.equal(h["meterless-scope"], undefined);
+
+    // Configurable timeout
+    await meterlessChatModel({ token: TOKEN, timeoutMs: 45_000, fetchImpl: f }).chat([{ role: "user", content: "hi" }]);
+    assert.equal(seen[2], 45_000);
+    const fromEnv = meterlessFromEnv({ METERLESS_TOKEN: TOKEN, METERLESS_TIMEOUT_MS: "30000" }, { fetchImpl: f });
+    await fromEnv?.chat([{ role: "user", content: "hi" }]);
+    assert.equal(seen[3], 30_000);
   } finally {
     AbortSignal.timeout = realTimeout;
   }
@@ -229,4 +239,130 @@ test("OFFLINE MOCK: chat 401/403 is not retried; plain-text content stays a stri
     assert.equal(calls.length, 1);
     for (const msg of JSON.parse(String(calls[0].init.body)).messages) assert.equal(typeof msg.content, "string");
   }
+});
+
+test("regression: adaptMeterlessMessages preserves instruction priority and roles without blindly merging all turns", () => {
+  // Case 1: System + User -> instruction placed first in user turn, zero system role messages
+  const adapted = adaptMeterlessMessages([
+    { role: "system", content: "Rules: strict JSON" },
+    { role: "user", content: "Plan my day" },
+  ]);
+  assert.equal(adapted.length, 1);
+  assert.equal(adapted[0].role, "user");
+  assert.equal(adapted[0].content, "Rules: strict JSON\n\nPlan my day");
+
+  // Case 2: Multi-turn chat -> assistant and subsequent turns preserved, not blindly merged
+  const multiTurn = adaptMeterlessMessages([
+    { role: "system", content: "Rules" },
+    { role: "user", content: "Turn 1" },
+    { role: "assistant", content: "Reply 1" },
+    { role: "user", content: "Turn 2" },
+  ]);
+  assert.equal(multiTurn.length, 3);
+  assert.equal(multiTurn[0].role, "user");
+  assert.equal(multiTurn[0].content, "Rules\n\nTurn 1");
+  assert.equal(multiTurn[1].role, "assistant");
+  assert.equal(multiTurn[1].content, "Reply 1");
+  assert.equal(multiTurn[2].role, "user");
+  assert.equal(multiTurn[2].content, "Turn 2");
+
+  // Case 3: No system message -> returns unchanged
+  const noSystem = [{ role: "user" as const, content: "hi" }];
+  assert.deepEqual(adaptMeterlessMessages(noSystem), noSystem);
+});
+
+test("regression: meterlessChatModel serializes request structure with tier-split off and zero secondary system messages", async () => {
+  const calls: Call[] = [];
+  const m = meterlessChatModel({
+    token: TOKEN,
+    fetchImpl: mockFetch(
+      () => ({
+        status: 200,
+        body: {
+          choices: [{ message: { content: "mock reply" } }],
+          model: "webllm/Llama-3.2-1B-Instruct-q4f16_1-MLC",
+        },
+      }),
+      calls
+    ),
+  });
+
+  // Call with system + user roles (the exact structure modelPlanner passes)
+  await m.chat([
+    { role: "system", content: "SYSTEM INSTRUCTIONS: You are Hard Mentor." },
+    { role: "user", content: 'Student: Riya.\nStudent message: """Plan my day."""' },
+  ]);
+
+  assert.equal(calls.length, 1);
+  const h = calls[0].init.headers as Record<string, string>;
+  assert.equal(h["meterless-tier-split"], "off", "tier-split disabled so JSON schema is not decomposed into numbered plan");
+  assert.equal(h["meterless-app"], "hard-mentor");
+  assert.equal(h["meterless-scope"], "user");
+
+  const body = JSON.parse(String(calls[0].init.body));
+  // Critical check: serialized body must have NO role: 'system' messages so WebLLM does not throw SystemMessageOrderError
+  const hasSystemRole = body.messages.some((msg: any) => msg.role === "system");
+  assert.equal(hasSystemRole, false, "serialized messages must not contain role: 'system' for Meterless/WebLLM");
+  assert.equal(body.messages.length, 1);
+  assert.equal(body.messages[0].role, "user");
+  assert.ok(body.messages[0].content.startsWith("SYSTEM INSTRUCTIONS: You are Hard Mentor."));
+  assert.ok(body.messages[0].content.includes('Student message: """Plan my day."""'));
+});
+
+test("regression: product createModelPlanner through meterlessChatModel produces valid request and validates response", async () => {
+  const calls: Call[] = [];
+  const draftJson = JSON.stringify({
+    decision: "daily_plan",
+    blocks: [{ topicId: "physics:electrostatics", minutes: 90, activity: "NCERT examples" }],
+    message: "Focus on Electrostatics first.",
+    reasons: [{ text: "Top priority weak topic", ref: { kind: "data_row", id: "record:riya:physics:electrostatics" } }],
+  });
+
+  const client = meterlessChatModel({
+    token: TOKEN,
+    fetchImpl: mockFetch(
+      () => ({
+        status: 200,
+        body: {
+          choices: [{ message: { content: draftJson } }],
+          model: "webllm/Llama-3.2-1B-Instruct-q4f16_1-MLC",
+        },
+      }),
+      calls
+    ),
+  });
+
+  const planner = createModelPlanner(client, {}, { validate: true });
+  const draft = await planner.draft({
+    name: "Riya",
+    hoursPerDay: 2,
+    message: "Plan my study for today.",
+    intent: "plan",
+    ranked: [
+      {
+        topicId: "physics:electrostatics",
+        subject: "physics",
+        name: "Electrostatics",
+        mastery: 0.35,
+        marksWeight: 8,
+        priority: 0.65,
+        urgency: 1.25,
+        sourceRow: "record:riya:physics:electrostatics",
+      },
+    ],
+    memories: [],
+    attempt: 1,
+    feedback: [],
+  });
+
+  // Verify the serialized call boundary
+  assert.equal(calls.length, 1);
+  const body = JSON.parse(String(calls[0].init.body));
+  assert.equal(body.messages.some((msg: any) => msg.role === "system"), false);
+  assert.equal(body.messages[0].role, "user");
+
+  // Verify the draft was parsed and validated successfully (not fallen back to rules)
+  assert.equal(draft.decision, "daily_plan");
+  assert.equal(draft.producedBy, undefined, "validated draft must not have fallback producedBy set");
+  assert.equal(draft.blocks[0].topicId, "physics:electrostatics");
 });
