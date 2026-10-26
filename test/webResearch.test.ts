@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 import { test } from "node:test";
 import { researchExam, type StudentGoal } from "../src/context/examContext.ts";
 import { baseDomain, boundedFetcher, htmlToText, isPrivateAddress, parseDates, webResearch } from "../src/context/webResearch.ts";
@@ -59,7 +61,7 @@ const SITE = "https://exam.example.gov.in";
 const E1 = { id: "Q1", label: "Test Entrance", aliases: ["TE"], site: SITE, org: "Q900" };
 
 test("helpers: private addresses, base domain, date parsing, html to text", () => {
-  for (const ip of ["10.1.1.1", "127.0.0.1", "169.254.169.254", "192.168.0.2", "172.16.0.1", "::1", "fd00::1", "::ffff:10.0.0.1", "::ffff:7f00:1", "::127.0.0.1", "64:ff9b::7f00:1", "fec0::1", "2002:7f00:1::", "198.18.0.1", "::"]) assert.ok(isPrivateAddress(ip), ip);
+  for (const ip of ["10.1.1.1", "127.0.0.1", "169.254.169.254", "192.168.0.2", "172.16.0.1", "::1", "fd00::1", "::ffff:10.0.0.1", "::ffff:7f00:1", "::127.0.0.1", "64:ff9b::7f00:1", "fec0::1", "2002:7f00:1::", "198.18.0.1", "::", "192.0.2.1", "198.51.100.1", "203.0.113.1", "2001:db8::1"]) assert.ok(isPrivateAddress(ip), ip);
   assert.ok(!isPrivateAddress("93.184.216.34"));
   assert.equal(baseDomain("jeemain.nta.nic.in"), "nta.nic.in");
   for (const bad of ["cbse.gov.in.evil.com", "evilgov.in", "attacker.github.io", "cisce.org", "gov.in", "example.com"]) assert.equal(baseDomain(bad), "", bad);
@@ -244,4 +246,116 @@ test("pass-2 regressions from the independent review", async () => {
   ents[key] = { ...ents[key], body: JSON.stringify(body) };
   const dep = await run({ ...ents, [`${SITE}/`]: { body: "<title>Test Entrance</title>Test Entrance 2027 will be held on 24 January 2027." } });
   assert.ok(!dep.seen.includes(`${SITE}/`));
+});
+
+function listenLocal(): Promise<{ server: http.Server; port: number; hits: string[] }> {
+  const hits: string[] = [];
+  const server = http.createServer((req, res) => {
+    hits.push(`${req.headers.host ?? ""} ${req.url ?? ""}`);
+    res.writeHead(200, { "content-type": "text/html" });
+    res.end("<html>internal</html>");
+  });
+  return new Promise((resolve, reject) => {
+    server.listen(0, "127.0.0.1", () => resolve({ server, port: (server.address() as AddressInfo).port, hits }));
+    server.on("error", reject);
+  });
+}
+
+test("dns rebinding: hostname that later resolves private is pinned to the first public IP and never hits the loopback stub", async () => {
+  const { server, port, hits } = await listenLocal();
+  try {
+    let n = 0;
+    const lookup = async () => (++n === 1 ? ["93.184.216.34"] : ["127.0.0.1"]);
+    const pinned: string[] = [];
+    const r = await boundedFetcher({
+      enabled: true,
+      pauseMs: 0,
+      lookup,
+      pinnedFetch: async ({ ip, url }) => {
+        pinned.push(ip);
+        if (isPrivateAddress(ip)) {
+          await new Promise<void>((resolve, reject) => {
+            http
+              .get({ host: "127.0.0.1", port, path: url.pathname, headers: { host: url.hostname } }, (res) => {
+                res.resume();
+                res.on("end", resolve);
+              })
+              .on("error", reject);
+          });
+        }
+        return new Response("<html>public fixture</html>", { status: 200, headers: { "content-type": "text/html" } });
+      },
+    }).raw("https://exam.example.gov.in/", "text/html");
+    assert.equal(n, 1, "one resolution per hop; a later private answer is never requested");
+    assert.deepEqual(pinned, ["93.184.216.34"]);
+    assert.equal(r.ok, true);
+    if (r.ok) assert.match(r.text, /public fixture/);
+    assert.equal(hits.length, 0);
+  } finally {
+    server.close();
+  }
+});
+
+test("redirect to a private address is refused and the loopback stub is not fetched", async () => {
+  const { server, port, hits } = await listenLocal();
+  try {
+    const lookup = async (h: string) => (h.startsWith("private") || h === "127.0.0.1" ? ["10.0.0.5"] : ["93.184.216.34"]);
+    const seen: string[] = [];
+    const r = await boundedFetcher({
+      enabled: true,
+      pauseMs: 0,
+      lookup,
+      fetchImpl: (async (input: URL | string) => {
+        const u = String(input);
+        seen.push(u);
+        if (/private|127\.0\.0\.1/.test(u)) {
+          await new Promise<void>((resolve, reject) => {
+            http.get({ host: "127.0.0.1", port, path: "/" }, (res) => {
+              res.resume();
+              res.on("end", resolve);
+            }).on("error", reject);
+          });
+          return new Response("SECRET", { status: 200, headers: { "content-type": "text/html" } });
+        }
+        return new Response("", { status: 302, headers: { location: "https://private.example.gov.in/secret", "content-type": "text/html" } });
+      }) as unknown as typeof fetch,
+    }).raw("https://exam.example.gov.in/start", "text/html");
+    assert.equal(r.ok, false);
+    assert.match(r.reason, /private address/);
+    assert.ok(!seen.some((u) => /private|127\.0\.0\.1/.test(u)));
+    assert.equal(hits.length, 0);
+  } finally {
+    server.close();
+  }
+});
+
+test("valid public fixture still works through the pinned fetch path", async () => {
+  const { f } = fakeFetch({
+    [`${SITE}/`]: { body: "<title>Test Entrance</title><p>ok</p>" },
+  });
+  const r = await boundedFetcher({
+    enabled: true,
+    pauseMs: 0,
+    lookup: publicLookup,
+    fetchImpl: f,
+  }).raw(`${SITE}/`, "text/html,text/plain");
+  assert.equal(r.ok, true);
+  if (r.ok) assert.match(r.text, /Test Entrance/);
+});
+
+test("gate: flag-off path still does no lookup and no pinned fetch", async () => {
+  let looked = 0;
+  let pinned = 0;
+  const r = await boundedFetcher({
+    enabled: false,
+    lookup: async () => (looked++, ["93.184.216.34"]),
+    pinnedFetch: async () => {
+      pinned++;
+      return new Response("nope");
+    },
+  }).raw("https://exam.example.gov.in/", "text/html");
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, "Live research is disabled");
+  assert.equal(looked, 0);
+  assert.equal(pinned, 0);
 });

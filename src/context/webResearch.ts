@@ -11,12 +11,17 @@
 // Never sent out: student identity, marks, messages, memory, goal text. The
 // only outbound query is the exam name. Page text is data: it is stripped to
 // text and matched with fixed patterns; no instruction in a page is acted on.
-// Bounded: HTTPS only, public hosts only (DNS checked, redirects re-checked),
-// robots.txt obeyed, <= MAX_PAGES pages per exam, size and time caps, a pause
-// between requests, and a stop on 401/403/429/5xx or a bot challenge.
+// Bounded: HTTPS only, public hosts only (resolved address pinned for the
+// connection; redirects re-checked the same way), robots.txt obeyed,
+// <= MAX_PAGES pages per exam, size and time caps, a pause between requests,
+// and a stop on 401/403/429/5xx or a bot challenge.
 
 import dns from "node:dns/promises";
+import https from "node:https";
 import net from "node:net";
+import { Readable } from "node:stream";
+import type { IncomingMessage } from "node:http";
+import tls from "node:tls";
 import type { ExamCandidate, ExamFact, ResearchSource, SourceRef, StudentGoal } from "./examContext.ts";
 
 export const USER_AGENT = "HardMentorResearch/0.1 (read-only student study agent; fetches public exam pages)";
@@ -26,10 +31,20 @@ const TIMEOUT_MS = 8_000;
 const PAUSE_MS = 400;
 const MAX_REDIRECTS = 3;
 
+export interface PinnedFetchArgs {
+  url: URL;
+  /** validated address this request will connect to (never re-resolved) */
+  ip: string;
+  accept: string;
+  signal: AbortSignal;
+}
+
 export interface WebResearchOptions {
   fetchImpl?: typeof fetch;
   /** resolves a hostname to addresses; injectable for tests */
   lookup?: (host: string) => Promise<string[]>;
+  /** test hook: HTTPS request to a pinned IP; production uses node:https */
+  pinnedFetch?: (args: PinnedFetchArgs) => Promise<Response>;
   now?: () => string;
   pauseMs?: number;
   /** master switch for ALL outbound research traffic; default OFF unless HM_LIVE_RESEARCH=1 */
@@ -45,8 +60,8 @@ const lower = (s: string) => s.toLowerCase();
 const norm = (s: string) => lower(s).replace(/[^a-z0-9]+/g, " ").trim();
 
 const PRIVATE = new net.BlockList();
-for (const [n, p] of [["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16], ["172.16.0.0", 12], ["192.0.0.0", 24], ["192.168.0.0", 16], ["198.18.0.0", 15], ["224.0.0.0", 3]] as const) PRIVATE.addSubnet(n, p, "ipv4");
-for (const [n, p] of [["::", 128], ["::1", 128], ["fc00::", 7], ["fe80::", 10], ["fec0::", 10], ["ff00::", 8], ["64:ff9b::", 96], ["2002::", 16], ["::", 96]] as const) PRIVATE.addSubnet(n, p, "ipv6");
+for (const [n, p] of [["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16], ["172.16.0.0", 12], ["192.0.0.0", 24], ["192.0.2.0", 24], ["192.168.0.0", 16], ["198.18.0.0", 15], ["198.51.100.0", 24], ["203.0.113.0", 24], ["224.0.0.0", 3]] as const) PRIVATE.addSubnet(n, p, "ipv4");
+for (const [n, p] of [["::", 128], ["::1", 128], ["fc00::", 7], ["fe80::", 10], ["fec0::", 10], ["ff00::", 8], ["64:ff9b::", 96], ["2001:db8::", 32], ["2002::", 16], ["3fff::", 20], ["::", 96]] as const) PRIVATE.addSubnet(n, p, "ipv6");
 
 /** true for loopback, private, link-local, multicast, reserved and every IPv6 form that embeds an IPv4 (mapped, NAT64, 6to4); unparseable counts as private */
 export function isPrivateAddress(ip: string): boolean {
@@ -55,9 +70,68 @@ export function isPrivateAddress(ip: string): boolean {
   return true;
 }
 
+function incomingToFetchResponse(res: IncomingMessage): Response {
+  const headers = new Headers();
+  for (const [k, v] of Object.entries(res.headers)) {
+    if (v === undefined) continue;
+    if (k === "set-cookie" && Array.isArray(v)) {
+      for (const c of v) headers.append("set-cookie", c);
+    } else {
+      headers.set(k, Array.isArray(v) ? v.join(", ") : v);
+    }
+  }
+  const status = res.statusCode ?? 0;
+  const body = status === 204 || status === 205 || status === 304 ? null : (Readable.toWeb(res) as BodyInit);
+  return new Response(body, { status, headers });
+}
+
+/** HTTPS GET to a previously validated IP, with SNI/Host/cert identity of the original hostname. */
+export function pinnedHttpsFetch(args: PinnedFetchArgs): Promise<Response> {
+  const { url: u, ip, accept, signal } = args;
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: ip,
+        servername: u.hostname,
+        port: 443,
+        method: "GET",
+        path: `${u.pathname}${u.search}`,
+        setHost: false,
+        headers: { Host: u.hostname, "user-agent": USER_AGENT, accept },
+        timeout: TIMEOUT_MS,
+        rejectUnauthorized: true,
+        checkServerIdentity: (_host, cert) => tls.checkServerIdentity(u.hostname, cert),
+        family: net.isIPv6(ip) ? 6 : 4,
+      },
+      (incoming) => {
+        try {
+          resolve(incomingToFetchResponse(incoming));
+        } catch (e) {
+          reject(e);
+        }
+      },
+    );
+    const abort = () => {
+      req.destroy();
+      reject(Object.assign(new Error("The operation was aborted"), { name: "TimeoutError" }));
+    };
+    if (signal.aborted) {
+      abort();
+      return;
+    }
+    signal.addEventListener("abort", abort, { once: true });
+    req.on("timeout", () => {
+      req.destroy();
+      reject(Object.assign(new Error("The operation was aborted"), { name: "TimeoutError" }));
+    });
+    req.on("error", reject);
+    req.end();
+  });
+}
+
 /** Fetcher with every bound in the header comment. One instance per research run. */
 export function boundedFetcher(opts: WebResearchOptions = {}) {
-  const f = opts.fetchImpl ?? fetch;
+  const f = opts.fetchImpl;
   const lookup = opts.lookup ?? (async (h: string) => (await dns.lookup(h, { all: true })).map((a) => a.address));
   const pause = opts.pauseMs ?? PAUSE_MS;
   let blocked: string | null = null;
@@ -65,24 +139,28 @@ export function boundedFetcher(opts: WebResearchOptions = {}) {
   let last = 0;
   const robots = new Map<string, string[] | null | { stop: string }>();
 
-  async function publicHost(url: URL): Promise<string | null> {
+  function urlPolicy(url: URL): string | null {
     if (url.protocol !== "https:") return "not https";
     if (url.username || url.password) return "URL carries credentials";
     if (url.port && url.port !== "443") return "non-standard port";
     const host = url.hostname;
     if (net.isIP(host)) return "IP address host";
     if (host === "localhost" || host.endsWith(".local") || host.endsWith(".internal") || !host.includes(".")) return "private or internal host name";
-    try {
-      const addrs = await lookup(host);
-      if (!addrs.length || addrs.some(isPrivateAddress)) return "resolves to a private address";
-    } catch {
-      return "host did not resolve";
-    }
     return null;
   }
 
+  async function pinPublic(host: string): Promise<{ ip: string } | { reason: string }> {
+    try {
+      const addrs = await lookup(host);
+      if (!addrs.length || addrs.some(isPrivateAddress)) return { reason: "resolves to a private address" };
+      return { ip: addrs[0]! };
+    } catch {
+      return { reason: "host did not resolve" };
+    }
+  }
+
   async function raw(url: string, accept: string): Promise<FetchOutcome> {
-    // single choke point: Wikidata, robots.txt, pages and redirects all pass here, before DNS or fetch
+    // single choke point: Wikidata, robots.txt, pages and redirects all pass here
     if (!liveResearchEnabled(opts)) return { ok: false, url, reason: LIVE_RESEARCH_DISABLED };
     let current = url;
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
@@ -92,15 +170,21 @@ export function boundedFetcher(opts: WebResearchOptions = {}) {
       } catch {
         return { ok: false, url: current, reason: "bad URL" };
       }
-      const bad = await publicHost(u);
+      const bad = urlPolicy(u);
       if (bad) return { ok: false, url: current, reason: `refused: ${bad}` };
+      const pin = await pinPublic(u.hostname);
+      if ("reason" in pin) return { ok: false, url: current, reason: `refused: ${pin.reason}` };
       if ((blockedHosts.get(u.hostname) ?? 0) > Date.now()) return { ok: false, url: current, reason: `stopped earlier: ${u.hostname} restricted access` };
       const wait = last + pause - Date.now();
       if (wait > 0) await new Promise((r) => setTimeout(r, wait));
       last = Date.now();
       let res: Response;
       try {
-        res = await f(u, { redirect: "manual", signal: AbortSignal.timeout(TIMEOUT_MS), headers: { "user-agent": USER_AGENT, accept } });
+        const signal = AbortSignal.timeout(TIMEOUT_MS);
+        const doPinned = opts.pinnedFetch ?? pinnedHttpsFetch;
+        res = f
+          ? await f(u, { redirect: "manual", signal, headers: { "user-agent": USER_AGENT, accept } })
+          : await doPinned({ url: u, ip: pin.ip, accept, signal });
       } catch (e) {
         const cause = (e as { cause?: { code?: string } }).cause?.code;
         return { ok: false, url: current, reason: `request failed: ${(e as Error).name}${cause ? ` (${cause})` : ""}` };
