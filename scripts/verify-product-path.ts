@@ -11,8 +11,9 @@ import { bm25Retriever, loadCorpus } from "../src/rag/ncert.ts";
 import { RIYA } from "../src/synthetic/riya.ts";
 import { getRuntimeToken } from "./live-loop.ts";
 
-export async function runProductVerification(): Promise<{
+export interface ProductVerificationResult {
   ok: boolean;
+  modelProvider?: string;
   modelRouted?: string;
   producedBy?: string;
   proposalStatus?: string;
@@ -24,7 +25,22 @@ export async function runProductVerification(): Promise<{
   usage?: any;
   replySnippet?: string;
   error?: string;
-}> {
+}
+
+/** The live verifier passes only when the graph used a validated Meterless proposal backed by a Zetaris read. */
+export function isVerifiedProductProposal(result: Omit<ProductVerificationResult, "ok" | "error">): boolean {
+  return (
+    result.modelProvider === "meterless" &&
+    Boolean(result.modelRouted?.trim()) &&
+    result.producedBy === undefined &&
+    result.proposalStatus === "validated" &&
+    Boolean(result.rawModelSnippet?.trim()) &&
+    Boolean(result.source?.includes("Zetaris table hard_mentor.study_records")) &&
+    Boolean(result.sql?.startsWith("SELECT "))
+  );
+}
+
+export async function runProductVerification(): Promise<ProductVerificationResult> {
   const token = getRuntimeToken();
   if (!token) {
     return { ok: false, error: "token_missing" };
@@ -32,6 +48,8 @@ export async function runProductVerification(): Promise<{
 
   // Isolate state completely in an ephemeral directory
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "hm-product-verify-"));
+  const priorStudySource = process.env.HM_STUDY_SOURCE;
+  const priorZetarisTable = process.env.HM_ZETARIS_TABLE;
   try {
     const sessionsDir = path.join(tempDir, "sessions");
     const studentsDir = path.join(tempDir, "students");
@@ -110,8 +128,8 @@ export async function runProductVerification(): Promise<{
     const profile = { studentId: RIYA.studentId, name: RIYA.name, hoursPerDay: RIYA.dailyStudyHours };
     const turn = await converse(env, profile, "Plan my study for today.");
 
-    return {
-      ok: true,
+    const result: Omit<ProductVerificationResult, "ok" | "error"> = {
+      modelProvider: client.provider,
       modelRouted,
       producedBy: turn.state?.draft?.producedBy,
       proposalStatus: turn.state?.draft?.comparison?.proposal?.status,
@@ -123,7 +141,12 @@ export async function runProductVerification(): Promise<{
       usage: modelUsage,
       replySnippet: turn.reply?.slice(0, 150).replace(/\n/g, " "),
     };
+    return isVerifiedProductProposal(result) ? { ...result, ok: true } : { ...result, ok: false, error: "verification_gate_failed" };
   } finally {
+    if (priorStudySource === undefined) delete process.env.HM_STUDY_SOURCE;
+    else process.env.HM_STUDY_SOURCE = priorStudySource;
+    if (priorZetarisTable === undefined) delete process.env.HM_ZETARIS_TABLE;
+    else process.env.HM_ZETARIS_TABLE = priorZetarisTable;
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 }

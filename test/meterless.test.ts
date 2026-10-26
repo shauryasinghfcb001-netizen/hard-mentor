@@ -9,7 +9,7 @@ import path from "node:path";
 import { runMentor, type StudentContext } from "../src/agent/graph.ts";
 import { createModelPlanner } from "../src/agent/modelPlanner.ts";
 import { modelFromEnv } from "../src/llm/client.ts";
-import { adaptMeterlessMessages, autoDetectMeterless, meterlessChatModel, meterlessFromEnv, normalizeMeterlessBaseURL, parseConnectLink, probeMeterless } from "../src/llm/meterless.ts";
+import { autoDetectMeterless, meterlessChatModel, meterlessFromEnv, normalizeMeterlessBaseURL, parseConnectLink, probeMeterless } from "../src/llm/meterless.ts";
 import { RIYA_TOPICS } from "../src/synthetic/riya.ts";
 
 const TOKEN = "mt-FAKE-test-token-0000";
@@ -241,37 +241,7 @@ test("OFFLINE MOCK: chat 401/403 is not retried; plain-text content stays a stri
   }
 });
 
-test("regression: adaptMeterlessMessages preserves instruction priority and roles without blindly merging all turns", () => {
-  // Case 1: System + User -> instruction placed first in user turn, zero system role messages
-  const adapted = adaptMeterlessMessages([
-    { role: "system", content: "Rules: strict JSON" },
-    { role: "user", content: "Plan my day" },
-  ]);
-  assert.equal(adapted.length, 1);
-  assert.equal(adapted[0].role, "user");
-  assert.equal(adapted[0].content, "Rules: strict JSON\n\nPlan my day");
-
-  // Case 2: Multi-turn chat -> assistant and subsequent turns preserved, not blindly merged
-  const multiTurn = adaptMeterlessMessages([
-    { role: "system", content: "Rules" },
-    { role: "user", content: "Turn 1" },
-    { role: "assistant", content: "Reply 1" },
-    { role: "user", content: "Turn 2" },
-  ]);
-  assert.equal(multiTurn.length, 3);
-  assert.equal(multiTurn[0].role, "user");
-  assert.equal(multiTurn[0].content, "Rules\n\nTurn 1");
-  assert.equal(multiTurn[1].role, "assistant");
-  assert.equal(multiTurn[1].content, "Reply 1");
-  assert.equal(multiTurn[2].role, "user");
-  assert.equal(multiTurn[2].content, "Turn 2");
-
-  // Case 3: No system message -> returns unchanged
-  const noSystem = [{ role: "user" as const, content: "hi" }];
-  assert.deepEqual(adaptMeterlessMessages(noSystem), noSystem);
-});
-
-test("regression: meterlessChatModel serializes request structure with tier-split off and zero secondary system messages", async () => {
+test("regression: meterlessChatModel preserves OpenAI messages and sends only documented Meterless headers", async () => {
   const calls: Call[] = [];
   const m = meterlessChatModel({
     token: TOKEN,
@@ -287,26 +257,20 @@ test("regression: meterlessChatModel serializes request structure with tier-spli
     ),
   });
 
-  // Call with system + user roles (the exact structure modelPlanner passes)
-  await m.chat([
+  const messages = [
     { role: "system", content: "SYSTEM INSTRUCTIONS: You are Hard Mentor." },
     { role: "user", content: 'Student: Riya.\nStudent message: """Plan my day."""' },
-  ]);
+  ] as const;
+  await m.chat([...messages]);
 
   assert.equal(calls.length, 1);
   const h = calls[0].init.headers as Record<string, string>;
-  assert.equal(h["meterless-tier-split"], "off", "tier-split disabled so JSON schema is not decomposed into numbered plan");
   assert.equal(h["meterless-app"], "hard-mentor");
   assert.equal(h["meterless-scope"], "user");
+  assert.equal(h["meterless-tier-split"], undefined);
 
   const body = JSON.parse(String(calls[0].init.body));
-  // Critical check: serialized body must have NO role: 'system' messages so WebLLM does not throw SystemMessageOrderError
-  const hasSystemRole = body.messages.some((msg: any) => msg.role === "system");
-  assert.equal(hasSystemRole, false, "serialized messages must not contain role: 'system' for Meterless/WebLLM");
-  assert.equal(body.messages.length, 1);
-  assert.equal(body.messages[0].role, "user");
-  assert.ok(body.messages[0].content.startsWith("SYSTEM INSTRUCTIONS: You are Hard Mentor."));
-  assert.ok(body.messages[0].content.includes('Student message: """Plan my day."""'));
+  assert.deepEqual(body.messages, messages);
 });
 
 test("regression: product createModelPlanner through meterlessChatModel produces valid request and validates response", async () => {
@@ -358,8 +322,8 @@ test("regression: product createModelPlanner through meterlessChatModel produces
   // Verify the serialized call boundary
   assert.equal(calls.length, 1);
   const body = JSON.parse(String(calls[0].init.body));
-  assert.equal(body.messages.some((msg: any) => msg.role === "system"), false);
-  assert.equal(body.messages[0].role, "user");
+  assert.equal(body.messages[0].role, "system");
+  assert.equal(body.messages[1].role, "user");
 
   // Verify the draft was parsed and validated successfully (not fallen back to rules)
   assert.equal(draft.decision, "daily_plan");

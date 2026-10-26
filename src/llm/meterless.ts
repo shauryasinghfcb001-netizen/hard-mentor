@@ -14,7 +14,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { openAICompatible, type ChatMessage, type ChatModel, type ClientConfig } from "./client.ts";
+import { openAICompatible, type ChatModel, type ClientConfig } from "./client.ts";
 
 export const METERLESS = {
   provider: "meterless",
@@ -126,79 +126,22 @@ export interface MeterlessConfig {
   maxRetries?: number;
 }
 
-/**
- * Adapts messages for Meterless Runtime (Nightshift).
- * WebLLM enforces that any message with role 'system' must be at index 0.
- * Because Nightshift's orchestrator can prepend its own runtime instruction
- * (for phase planning, reasoning scaffolding, or H-MEM reinjection), any caller-provided
- * system message must not remain as a separate 'system' role message that lands at
- * index >= 1.
- *
- * Preserves:
- * 1. Instruction priority: system instructions are placed at the beginning of the first user message.
- * 2. Untrusted-data boundary: clear separation between system instructions and user input.
- * 3. Role distinctions: assistant and subsequent user turns are NOT merged.
- */
-export function adaptMeterlessMessages(messages: ChatMessage[]): ChatMessage[] {
-  const hasSystem = messages.some((m) => m.role === "system");
-  if (!hasSystem) return messages;
-
-  const systemParts = messages
-    .filter((m) => m.role === "system")
-    .map((m) => m.content.trim())
-    .filter(Boolean);
-
-  const nonSystem = messages.filter((m) => m.role !== "system");
-  const systemText = systemParts.join("\n\n");
-
-  if (nonSystem.length === 0) {
-    return [{ role: "user", content: systemText }];
-  }
-
-  const firstUserIdx = nonSystem.findIndex((m) => m.role === "user");
-  if (firstUserIdx >= 0) {
-    return nonSystem.map((m, idx) => {
-      if (idx === firstUserIdx) {
-        return {
-          role: "user",
-          content: systemText ? `${systemText}\n\n${m.content}` : m.content,
-        };
-      }
-      return m;
-    });
-  }
-
-  return [{ role: "user", content: systemText }, ...nonSystem];
-}
-
 /** Chat model over the runtime's OpenAI-compatible API, with the contract's headers. */
 export function meterlessChatModel(cfg: MeterlessConfig): ChatModel {
   const token = checkToken(cfg.token);
-  const client = openAICompatible({
+  return openAICompatible({
     provider: METERLESS.provider,
     baseURL: normalizeMeterlessBaseURL(cfg.baseURL ?? METERLESS.defaultBaseURL),
     apiKey: token,
     model: checkModel(cfg.model ?? METERLESS.defaultModel),
     timeoutMs: cfg.timeoutMs ?? METERLESS.timeoutMs,
     maxRetries: cfg.maxRetries,
-    // contract: meterless-app on every request, meterless-scope: user on chat,
-    // and meterless-tier-split: off so single-turn JSON schemas are not decomposed into numbered lists
-    headers: {
-      "meterless-app": METERLESS.appId,
-      "meterless-scope": "user",
-      "meterless-tier-split": "off",
-    },
+    // Contract: meterless-app on every request, meterless-scope: user on chat.
+    headers: { "meterless-app": METERLESS.appId, "meterless-scope": "user" },
     fetchImpl: cfg.fetchImpl,
     sleep: cfg.sleep,
   });
 
-  return {
-    provider: client.provider,
-    model: client.model,
-    chat(messages, opts) {
-      return client.chat(adaptMeterlessMessages(messages), opts);
-    },
-  };
 }
 
 export type MeterlessStatus = "online" | "unauthorized" | "offline";
