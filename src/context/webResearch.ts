@@ -4,6 +4,10 @@
 // exam name the student typed. It returns entities with an "official website"
 // claim for the exam or its organizer. That is a third-party, community-edited
 // pointer, so it only nominates a domain; nothing from it is called verified.
+// Missing direct pointers: one bounded search (8 results, no continuation) for
+// instances/editions of one exact exam, then their P664/P137 authorities.
+// Indirect candidates require an official statement of responsibility. Discovery
+// uses at most 6 API requests, 16 authorities, and no recursive traversal.
 // Verification: the nominated site must be fetched, and its text must name the
 // exam. Facts come only from pages on that domain and carry the exact URL,
 // retrieval time, whether the exam year appears, and the quoted evidence.
@@ -159,9 +163,10 @@ export function boundedFetcher(opts: WebResearchOptions = {}) {
     }
   }
 
-  async function raw(url: string, accept: string): Promise<FetchOutcome> {
+  async function raw(url: string, accept: string, allowedHost?: (host: string) => boolean, beforeRequest?: (url: URL) => Promise<string | null>): Promise<FetchOutcome> {
     // single choke point: Wikidata, robots.txt, pages and redirects all pass here
     if (!liveResearchEnabled(opts)) return { ok: false, url, reason: LIVE_RESEARCH_DISABLED };
+    if (blocked) return { ok: false, url, reason: `stopped earlier: ${blocked}` };
     let current = url;
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
       let u: URL;
@@ -170,8 +175,11 @@ export function boundedFetcher(opts: WebResearchOptions = {}) {
       } catch {
         return { ok: false, url: current, reason: "bad URL" };
       }
+      if (allowedHost && !allowedHost(u.hostname)) return { ok: false, url: current, reason: "refused: redirect off the official domain" };
       const bad = urlPolicy(u);
       if (bad) return { ok: false, url: current, reason: `refused: ${bad}` };
+      const denied = await beforeRequest?.(u);
+      if (denied) return { ok: false, url: current, reason: denied };
       const pin = await pinPublic(u.hostname);
       if ("reason" in pin) return { ok: false, url: current, reason: `refused: ${pin.reason}` };
       if ((blockedHosts.get(u.hostname) ?? 0) > Date.now()) return { ok: false, url: current, reason: `stopped earlier: ${u.hostname} restricted access` };
@@ -237,13 +245,15 @@ export function boundedFetcher(opts: WebResearchOptions = {}) {
     return { ok: false, url: current, reason: "too many redirects" };
   }
 
-  async function allowedByRobots(url: string): Promise<boolean | { stop: string }> {
+  async function allowedByRobots(url: string, allowedHost: (host: string) => boolean): Promise<boolean | { stop: string }> {
     const u = new URL(url);
     if (!robots.has(u.origin)) {
-      const r = await raw(`${u.origin}/robots.txt`, "text/plain");
+      const r = await raw(`${u.origin}/robots.txt`, "text/plain", allowedHost);
       if (!r.ok && /^not text/.test(r.reason)) r.reason = `stopped: robots.txt unreadable (${r.reason})`;
       if (!r.ok) {
-        robots.set(u.origin, r.reason.startsWith("stopped") || r.reason.startsWith("refused") ? { stop: r.reason } : null);
+        robots.set(u.origin, /^HTTP (404|410)$/.test(r.reason) ? null : { stop: `stopped: robots.txt unavailable (${r.reason})` });
+      } else if (r.truncated) {
+        robots.set(u.origin, { stop: "stopped: robots.txt truncated; permissions unknown" });
       } else {
         const rules: string[] = [];
         let agents: string[] = [];
@@ -291,10 +301,17 @@ export function boundedFetcher(opts: WebResearchOptions = {}) {
     },
     raw,
     async page(url: string): Promise<FetchOutcome> {
-      const ok = await allowedByRobots(url);
+      const initialHost = new URL(url).hostname;
+      // Keep redirects on the exact host: a sibling host has separate robots
+      // permissions, even if it shares an authority domain.
+      const allowedHost = (host: string) => host === initialHost;
+      const ok = await allowedByRobots(url, allowedHost);
       if (typeof ok === "object") return { ok: false, url, reason: ok.stop };
       if (!ok) return { ok: false, url, reason: "robots.txt disallows this page" };
-      return raw(url, "text/html,text/plain");
+      return raw(url, "text/html,text/plain", allowedHost, async (u) => {
+        const permitted = await allowedByRobots(u.toString(), allowedHost);
+        return typeof permitted === "object" ? permitted.stop : permitted ? null : "robots.txt disallows this page";
+      });
     },
   };
 }
@@ -355,7 +372,9 @@ const DATE_US_RE = new RegExp(`\\b(${MONTHS})[a-z]*\\.?\\s+(\\d{1,2})(?:st|nd|rd
 const iso = (y: string, mon: string, d: string): string | null => {
   const m = MONTH_INDEX.indexOf(lower(mon).slice(0, 3)) + 1;
   const day = Number(d);
-  return m > 0 && day >= 1 && day <= 31 ? `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}` : null;
+  if (m < 1 || day < 1 || day > 31) return null;
+  const value = `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  return new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value ? value : null;
 };
 export function parseDates(sentence: string): string[] {
   const out = new Set<string>();
@@ -416,6 +435,8 @@ interface Entity {
   organizerSite: string | null;
   organizerLabel: string | null;
   countries: string[];
+  evidence?: string;
+  indirect?: boolean;
 }
 
 type Claims = Record<string, { mainsnak?: { datavalue?: { value?: unknown } } }[]>;
@@ -426,65 +447,119 @@ const claimValues = (claims: Claims, p: string): unknown[] =>
     .sort((a, b) => Number((b as { rank?: string }).rank === "preferred") - Number((a as { rank?: string }).rank === "preferred"))
     .map((c) => c.mainsnak?.datavalue?.value)
     .filter((v) => v !== undefined);
-const claimIds = (claims: Claims, p: string): string[] => claimValues(claims, p).map((v) => (v as { id?: string }).id).filter((x): x is string => !!x);
+const claimIds = (claims: Claims, p: string): string[] => claimValues(claims, p).map((v) => (v as { id?: string }).id).filter((x): x is string => typeof x === "string" && /^Q[1-9][0-9]*$/.test(x));
 const WD = "https://www.wikidata.org/w/api.php";
 
 async function wd(fetcher: ReturnType<typeof boundedFetcher>, params: Record<string, string>): Promise<any | null> {
+  if ((fetcher as { lastFailure?: string }).lastFailure) return null;
   const r = await fetcher.raw(`${WD}?${new URLSearchParams({ format: "json", ...params })}`, "application/json");
   if (!r.ok) {
     (fetcher as { lastFailure?: string }).lastFailure = r.reason;
     return null;
   }
   try {
-    return JSON.parse(r.text);
+    if (r.truncated) throw new Error("truncated discovery response");
+    const data = JSON.parse(r.text);
+    if (data.error) throw new Error("discovery API error");
+    return data;
   } catch {
+    (fetcher as { lastFailure?: string }).lastFailure = "invalid discovery JSON";
     return null;
   }
 }
 
 export async function discoverEntities(fetcher: ReturnType<typeof boundedFetcher>, examName: string, country: string): Promise<{ entities: Entity[]; note: string }> {
   const search = await wd(fetcher, { action: "wbsearchentities", search: examName.slice(0, 80), language: "en", type: "item", limit: "8" });
-  const hits: { id: string }[] = Array.isArray(search?.search) ? search.search.filter((h: { id?: unknown }) => typeof h?.id === "string") : [];
+  const hits: { id: string }[] = Array.isArray(search?.search) ? search.search.filter((h: { id?: unknown }) => typeof h?.id === "string" && /^Q[1-9][0-9]*$/.test(h.id)).slice(0, 8) : [];
   if (!search) return { entities: [], note: `discovery service unreachable (${(fetcher as { lastFailure?: string }).lastFailure ?? "no response"})` };
   if (!hits.length) return { entities: [], note: "no entity found" };
   const got = await wd(fetcher, { action: "wbgetentities", ids: hits.map((h) => h.id).join("|"), props: "claims|labels|aliases|descriptions", languages: "en" });
+  if (!got) return { entities: [], note: `discovery service unreachable (${(fetcher as { lastFailure?: string }).lastFailure ?? "no response"})` };
   const raws: Record<string, any> = got?.entities ?? {};
+  // One fallback search for ONE matching exam, never a recursive graph walk.
+  // P179 (series) / P31 (instance of) must point back to the exact exam ID.
+  const matching = hits.filter(h => {
+    const e = raws[h.id];
+    return e && [e.labels?.en?.value, ...(e.aliases?.en ?? []).map((a: any) => a.value)]
+      .some(n => typeof n === "string" && norm(n) === norm(examName));
+  });
+  const editions: Record<string, any[]> = {};
+  if (matching.length === 1) {
+    const id = matching[0].id;
+    const claims = raws[id].claims ?? {};
+    if (!claimValues(claims, "P856").length && !claimIds(claims, "P664").length && !claimIds(claims, "P137").length) {
+      const related = await wd(fetcher, { action: "query", list: "search", srsearch: `haswbstatement:P179=${id} OR haswbstatement:P31=${id}`, srnamespace: "0", srlimit: "8" });
+      if (related?.continue || (related?.query?.searchinfo?.totalhits ?? 0) > 8) return { entities: [], note: "edition discovery exceeds eight results; authority remains ambiguous" };
+      const ids = (related?.query?.search ?? []).map((h: any) => h.title).filter((id: unknown): id is string => typeof id === "string" && /^Q[1-9][0-9]*$/.test(id)).slice(0, 8);
+      if (ids.length) {
+        const details = await wd(fetcher, { action: "wbgetentities", ids: ids.join("|"), props: "claims|labels", languages: "en" });
+        editions[id] = ids.flatMap((eid: string) => {
+          const e = details?.entities?.[eid];
+          const relation = e && ["P179", "P31"].find(p => claimIds(e.claims ?? {}, p).includes(id));
+          return relation ? [{ ...e, id: eid, relation }] : [];
+        });
+      }
+    }
+  }
   const orgIds = new Set<string>();
   const ctryIds = new Set<string>();
-  for (const e of Object.values(raws)) {
-    for (const id of claimIds(e.claims ?? {}, "P664")) orgIds.add(id);
+  for (const e of [...Object.values(raws), ...Object.values(editions).flat()]) {
+    for (const id of [...claimIds(e.claims ?? {}, "P664"), ...claimIds(e.claims ?? {}, "P137")]) orgIds.add(id);
     for (const id of claimIds(e.claims ?? {}, "P17")) ctryIds.add(id);
   }
+  if (orgIds.size > 16 || ctryIds.size > 16) return { entities: [], note: "authority discovery exceeds bounded entity limit; no authority selected" };
   const orgs = orgIds.size ? ((await wd(fetcher, { action: "wbgetentities", ids: [...orgIds].join("|"), props: "claims|labels", languages: "en" }))?.entities ?? {}) : {};
   const ctry = ctryIds.size ? ((await wd(fetcher, { action: "wbgetentities", ids: [...ctryIds].join("|"), props: "labels|aliases", languages: "en" }))?.entities ?? {}) : {};
+  const failure = (fetcher as { lastFailure?: string }).lastFailure;
+  if (failure) return { entities: [], note: `discovery incomplete (${failure}); no authority selected` };
   const wantCountry = norm(country);
   const out: Entity[] = [];
+  const siteOf = (c: Claims) => (claimValues(c, "P856").find(v => typeof v === "string") as string | undefined) ?? null;
   for (const h of hits) {
     const e = raws[h.id];
     if (!e) continue;
     const claims: Claims = e.claims ?? {};
     const countries = claimIds(claims, "P17").flatMap((id) => [ctry[id]?.labels?.en?.value, ...(ctry[id]?.aliases?.en ?? []).map((a: { value: string }) => a.value)]).filter(Boolean) as string[];
     if (countries.length && !countries.some((c) => norm(c) === wantCountry)) continue;
-    const org = claimIds(claims, "P664")[0];
-    const siteOf = (c: Claims) => (claimValues(c, "P856")[0] as string | undefined) ?? null;
-    out.push({
-      id: h.id,
-      label: e.labels?.en?.value ?? h.id,
-      aliases: (e.aliases?.en ?? []).map((a: { value: string }) => a.value),
-      description: e.descriptions?.en?.value ?? "",
-      site: siteOf(claims),
-      organizerSite: org ? siteOf(orgs[org]?.claims ?? {}) : null,
-      organizerLabel: org ? (orgs[org]?.labels?.en?.value ?? null) : null,
-      countries,
-    });
+    const links = [e, ...(editions[h.id] ?? [])].flatMap(node =>
+      ["P664", "P137"].flatMap(p => claimIds(node.claims ?? {}, p).map(org => ({ org, node: node === e ? h.id : node.id, relation: node.relation, p }))));
+    const unique = [...new Map(links.map(l => [l.org, l])).values()];
+    // Each authority gets its own candidate. Never silently pick the first claim.
+    for (const link of unique.length ? unique : [null]) {
+      out.push({
+        id: unique.length > 1 ? `${h.id}:${link!.org}` : h.id,
+        label: e.labels?.en?.value ?? h.id,
+        aliases: (e.aliases?.en ?? []).map((a: { value: string }) => a.value),
+        description: e.descriptions?.en?.value ?? "",
+        site: siteOf(claims),
+        organizerSite: link ? siteOf(orgs[link.org]?.claims ?? {}) : null,
+        organizerLabel: link ? (orgs[link.org]?.labels?.en?.value ?? null) : null,
+        countries,
+        indirect: !!link && link.node !== h.id,
+        evidence: link ? `${h.id}${link.node !== h.id ? ` <- ${link.relation} - ${link.node}` : ""} - ${link.p} -> ${link.org} - P856 -> ${siteOf(orgs[link.org]?.claims ?? {})}` : `${h.id} - P856 -> ${siteOf(claims)}`,
+      });
+    }
   }
-  const usable = out.filter((e) => e.site || e.organizerSite);
-  return { entities: usable, note: !out.length ? `no exam entity in ${country}` : !usable.length ? "found matching exam entries but none lists a current official website" : "" };
+  const usable = out.filter((e) => e.site || e.organizerSite || e.organizerLabel);
+  return { entities: usable, note: !out.length ? `no exam entity in ${country}` : !usable.length ? "found matching exam entries but no current website through direct or bounded instance/edition authority relationships" : "" };
 }
 
-/** the only text that may leave: a short name of letters, spaces and a few punctuation marks. No digits (a year is stripped before), no long sentences. */
+const GRADE_RE = /\b(?:class|grade|standard|std)\s+(?:1[0-2]|[1-9])\b/gi;
+/** the only text that may leave: a short name of letters, spaces and a few punctuation marks. Numbers allowed only as grade markers (class/grade/standard/std 1-12); no long sentences. */
 export function looksLikeExamName(q: string): boolean {
-  return /^[\p{L}][\p{L}\s()&.'/-]{1,58}$/u.test(q) && q.split(/\s+/).length <= 6;
+  if (!/^[\p{L}][\p{L}0-9\s()&.'/-]{1,58}$/u.test(q)) return false;
+  if (q.split(/\s+/).length > 6) return false;
+  // A grade marker does not turn surrounding prose into an exam name.
+  // Digit-bearing inputs use a deliberately narrow label grammar: an optional
+  // board acronym, one grade marker and optional exam-label words.
+  if (/\d/.test(q) && !/^(?:[A-Z]{2,12} )?(?:class|grade|standard|std) (?:1[0-2]|[1-9])(?: (?:board )?(?:exam|examination))?$/i.test(q)) return false;
+  if (/\b(?:i|am|my|me|we|our|you|your|he|she|his|her|student|studying|studies|studied|preparing|taking|enrolled|live|lives|email|address|born|roll|marks|scored|phone|name)\b/i.test(q)) return false;
+  if (/\d/.test(q) && !/^(?:class|grade|standard|std)\b/i.test(q) && !/^[A-Z]{2,12} /.test(q)) return false;
+  if (/\d/.test(q)) {
+    const withoutGrades = q.replace(GRADE_RE, "");
+    if (/\d/.test(withoutGrades)) return false;
+  }
+  return true;
 }
 
 function hostOf(u: string | null): string | null {
@@ -553,7 +628,23 @@ export function webResearch(opts: WebResearchOptions = {}): ResearchSource & { l
         limits.push("the exam field does not look like just an exam name, so nothing was sent anywhere; give only the exam's name");
         return [];
       }
-      const { entities, note } = await discoverEntities(fetcher, query, goal.country);
+      // Grade labels describe the student's exam level, not the authority's
+      // entity name. Search the named board once; never retry a failed service.
+      const authorityQuery = query.replace(GRADE_RE, "").replace(/\b(?:board )?(?:exam|examination)\b/gi, "").trim();
+      const hasGrade = /\d/.test(query);
+      if (hasGrade && !authorityQuery) {
+        limits.push("a grade alone does not identify an exam authority; include the board name");
+        return [];
+      }
+      const discoveryQuery = hasGrade ? authorityQuery : query;
+      const discovered = await discoverEntities(fetcher, discoveryQuery, goal.country);
+      const note = discovered.note;
+      // Authority searches must match the supplied board label or alias exactly.
+      // Unrelated search hits cannot become a student's exam.
+      const entities = discovered.entities.filter((e) => [e.label, ...e.aliases].some((n) => hasGrade
+        ? norm(n) === norm(authorityQuery)
+        : norm(n) === norm(query) || (` ${norm(n)} `).includes(` ${norm(query)} `)));
+      if (discovered.entities.length && !entities.length) limits.push("discovery returned only unrelated names; no authority selected");
       if (note) limits.push(note);
       const exact = entities.filter((e) => [e.label, ...e.aliases].some((n) => norm(n) === norm(query)));
       const pick = exact.length === 1 ? exact : entities;
@@ -561,16 +652,16 @@ export function webResearch(opts: WebResearchOptions = {}): ResearchSource & { l
         byId.set(e.id, e);
         const domains = [hostOf(e.site), hostOf(e.organizerSite)].filter((h): h is string => !!h).map(baseDomain).filter(Boolean);
         const ref: SourceRef = {
-          url: `https://www.wikidata.org/wiki/${e.id}`,
+          url: `https://www.wikidata.org/wiki/${e.id.split(":")[0]}`,
           publisher: "Wikidata (community-edited pointer, not an exam authority)",
           via: "web",
           retrievedAt: now(),
           publishedAt: null,
-          note: `Wikidata lists ${e.site ?? e.organizerSite} as the official website`,
+          note: `Community discovery candidate only; ${e.evidence}`,
         };
         return {
           id: e.id,
-          name: e.label,
+          name: hasGrade ? query : e.label,
           body: e.organizerLabel ?? "responsible body not named by the discovery source",
           country: goal.country,
           aliases: [],
@@ -588,16 +679,36 @@ export function webResearch(opts: WebResearchOptions = {}): ResearchSource & { l
       const year = examYear(goal);
       const today = now().slice(0, 10);
       const names = nameVariants(e, goal.exam);
+      const examLabel = goal.exam.replace(/\b20\d\d\b/g, "").replace(/\s+/g, " ").trim();
+      // An authority homepage can confirm its own identity, but its dates must
+      // explicitly name the requested grade-specific exam.
+      const dateNames = /\d/.test(examLabel) ? [examLabel] : names;
       for (const u of [e.site, e.organizerSite]) {
         const h = hostOf(u);
         if (h && !isTrustedAuthorityHost(h)) mine.push(`${h} is nominated as official but is not a government or education domain, so I did not read it or treat it as official`);
       }
       const facts: ExamFact[] = [];
       const seen = new Set<string>();
-      const queue = [e.site, e.organizerSite].filter((u): u is string => !!u && c.officialDomains.includes(baseDomain(hostOf(u) ?? "")));
+      // A community pointer may use HTTP. Nominate its same-host HTTPS URL
+      // before any connection; never request HTTP or fall back after failure.
+      const queue = [e.site, e.organizerSite].flatMap((value) => {
+        if (!value) return [];
+        try {
+          const u = new URL(value);
+          if (!c.officialDomains.includes(baseDomain(u.hostname))) return [];
+          if (u.protocol === "http:" && !u.port && !u.username && !u.password) {
+            u.protocol = "https:";
+            mine.push("discovery supplied an HTTP pointer; only its same-host HTTPS URL was nominated (no HTTP request or fallback)");
+          }
+          return [u.toString()];
+        } catch { return []; }
+      });
       let fetched = 0;
       const pages: string[] = [];
       let named = false;
+      let examNamed = false;
+      let relationshipEstablished = !e.indirect;
+      const pending: ExamFact[] = [];
       while (queue.length && fetched < MAX_PAGES) {
         const url = new URL(queue.shift()!).toString();
         if (seen.has(url)) continue;
@@ -608,6 +719,7 @@ export function webResearch(opts: WebResearchOptions = {}): ResearchSource & { l
         fetched++;
         if (!r.ok) {
           mine.push(`${url}: ${r.reason}`);
+          if (/stopped|request failed|host did not resolve/.test(r.reason)) break;
           continue;
         }
         const finalHost = hostOf(r.url);
@@ -620,28 +732,61 @@ export function webResearch(opts: WebResearchOptions = {}): ResearchSource & { l
         const isHtml = /html/i.test(r.contentType);
         const text = isHtml ? htmlToText(r.text) : r.text;
         const title = isHtml ? pageTitle(r.text) : "";
+        const relationship = e.indirect ? sentences(text).find(s => namesExam(s, names)
+          && !!e.organizerLabel && names.some(name => {
+            const sentence = ` ${norm(s)} `;
+            const body = norm(e.organizerLabel!);
+            const exam = norm(name);
+            // Direct grammatical responsibility, not mere co-occurrence.
+            return ["conducts", "administers", "organizes", "organises", "operates"].some(verb =>
+              sentence.includes(` ${body} ${verb} ${exam} `) || sentence.includes(` ${body} ${verb} the ${exam} `))
+              || ["conducted", "administered", "organized", "organised", "operated"].some(verb =>
+                sentence.includes(` ${exam} is ${verb} by ${body} `));
+          })
+          && !DOUBTFUL.test(s) && !INSTRUCTION_LIKE.test(s)) : undefined;
+        if (relationship) relationshipEstablished = true;
         const aboutExam = namesExam(`${title}\n${text}`, names);
         const yearMatch = year ? sentences(text).some((s) => new RegExp(`\\b${year}\\b`).test(s) && namesExam(s, names)) : false;
-        const ref: SourceRef = { url: r.url, publisher: finalHost, via: "web", retrievedAt, publishedAt: null, note: `${title.slice(0, 100) || "untitled page"}; exam named on page: ${aboutExam}; year ${year ?? "unknown"} appears in a sentence naming the exam: ${yearMatch}${r.truncated ? "; page truncated at size cap" : ""}` };
+        const ref: SourceRef = { url: r.url, publisher: finalHost, via: "web", retrievedAt, publishedAt: null, note: `discovery chain: ${e.evidence}; ${title.slice(0, 100) || "untitled page"}; exam named on page: ${aboutExam}; year ${year ?? "unknown"} appears in a sentence naming the exam: ${yearMatch}${r.truncated ? "; page truncated at size cap" : ""}` };
+        if (relationship) pending.push({ key: "conducting_body", value: e.organizerLabel!, source: { url: r.url, publisher: finalHost, via: "web", retrievedAt, publishedAt: null, note: `discovery chain: ${e.evidence}; quoted: "${relationship}"` } });
         if (aboutExam && !named) {
           named = true;
           facts.push({ key: "official_site_confirmed", value: `${finalHost} names ${names[0]}${title ? ` (page title: "${title.slice(0, 100)}")` : ""}`, source: ref });
         }
-        if (!aboutExam) continue;
+        // A conducting-body portal may link to its exams without naming them
+        // in visible prose. Follow only the existing bounded relevant links.
         if (isHtml) for (const l of relevantLinks(r.text, r.url, year, names).slice(0, 3)) if (!seen.has(l)) queue.push(l);
+        if (!aboutExam) continue;
+        const examEvidence = sentences(text).find((s) => namesExam(s, dateNames) && !INSTRUCTION_LIKE.test(s));
+        if (examEvidence && !examNamed) {
+          examNamed = true;
+          facts.push({ key: "exam_named_on_official_site", value: examEvidence, source: { ...ref, note: `${ref.note}; quoted: "${examEvidence}"` } });
+        }
+        // Preserve exact official wording rather than inventing a syllabus or
+        // converting quoted marks into unsupported planner weights.
+        for (const [key, cue] of [["syllabus_excerpt", /\bsyllabus\b/i], ["exam_format_excerpt", /\b(?:examination scheme|exam(?:ination)? pattern|multiple.choice|duration)\b/i]] as const) {
+          const quote = sentences(text).find(s => namesExam(s, dateNames) && cue.test(s) && !INSTRUCTION_LIKE.test(s));
+          if (quote && !facts.some(f => f.key === key)) facts.push({ key, value: quote, source: { ...ref, note: `${ref.note}; quoted: "${quote}"; excerpt only, coverage unknown` } });
+        }
         const cand = new Map<string, { date: string; sentence: string }>();
         for (const s of sentences(text)) {
           if (!EXAM_DAY_CUE.test(s) || NOT_EXAM_DAY.test(s)) continue;
           const d = plainExamDate(s);
           if (!d || (year && !d.startsWith(year)) || d <= today) continue;
-          if (!namesExam(s, names) || INSTRUCTION_LIKE.test(s)) continue;
+          if (!namesExam(s, dateNames) || INSTRUCTION_LIKE.test(s)) continue;
           cand.set(d, { date: d, sentence: s });
         }
         for (const { date, sentence } of cand.values()) {
           facts.push({ key: "exam_date_candidate", value: date, source: { ...ref, note: `${ref.note}; quoted: "${sentence}"` } });
         }
       }
+      if (e.indirect && !relationshipEstablished) {
+        facts.length = 0;
+        mine.push("instance/edition pointer remains a candidate: no fetched official statement established this body's responsibility for the exam; no facts verified");
+      }
+      if (relationshipEstablished) facts.push(...pending);
       if (!named) mine.push("no page on the nominated official domain could be read and matched to this exam");
+      if (named && !examNamed) mine.push("authority identity confirmed only; the requested exam was not explicitly evidenced in page text");
       // One unambiguous exam date becomes exam_date; several distinct dates stay unknown.
       const dates = facts.filter((f) => f.key === "exam_date_candidate");
       const distinct = [...new Set(dates.map((d) => d.value))];

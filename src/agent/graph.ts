@@ -1,3 +1,4 @@
+import { assertStudentStorage } from "../consent/storageGate.ts";
 // The Hard Mentor reasoning loop as a LangGraph state graph (blueprint
 // section 5): sense -> distress override | memory ops | NCERT doubt | quiz |
 // (recall -> draft -> check -> revise up to 2 times -> fallback) -> respond
@@ -37,6 +38,7 @@ export interface StudentContext {
 }
 
 export interface GraphDeps {
+  maxDrafts?: number;
   planner: Planner;
   /** null = memory off (control condition) */
   memory: StudentMemory | null;
@@ -95,6 +97,8 @@ const PLAN_CUE =
 const AUX_LEAD = /^\s*(is|are|was|were|does|do|did|can|could|will|would|should)\b/i;
 const FIRST_PERSON = /\b(i|i'm|i've|i'd|my|me|mine|we|our)\b/i;
 
+export const asksPlanWhy = (message: string): boolean => /^\s*(?:why|why\s+(?:this|that|it|these)(?:\s+(?:plan|topic|topics|recommendation|order))?|explain\s+(?:this|that|my|the)\s+plan)[.!?]*\s*$/i.test(message);
+
 export function classifyIntent(message: string, retriever?: Retriever | null, quizOpen = false): { intent: Intent; detail: string } {
   // Distress is checked first, before any other routing: it bypasses study
   // pressure, quizzes, planning, retrieval and memory write-back. Only rule ids
@@ -114,6 +118,7 @@ export function classifyIntent(message: string, retriever?: Retriever | null, qu
   if (QUIZ_START.test(message)) return { intent: "quiz_start", detail: "intent quiz_start (rules)" };
   if (looksLikeAnswers(message)) return { intent: "quiz_answer", detail: "intent quiz_answer (rules: answer letters, no quiz open)" };
   if (SWAP.test(message)) return { intent: "swap_request", detail: "intent swap_request (rules)" };
+  if (asksPlanWhy(message)) return { intent: "plan", detail: "intent plan (rules: plan explanation)" };
   if (PLAN_CUE.test(message)) return { intent: "plan", detail: "intent plan (rules: schedule wording)" };
   const hinglish = Q_HINGLISH.test(message);
   const definitional = Q_DEFINITIONAL.test(message);
@@ -143,6 +148,13 @@ export function buildMentorGraph(deps: GraphDeps) {
   return new StateGraph(State)
     .addNode("sense", (s) => {
       const { intent, detail } = classifyIntent(s.message, deps.retriever, !!s.activeQuiz);
+      if (intent !== "distress") {
+        if (memory) assertStudentStorage(memory.dir, s.student.studentId);
+        if (deps.quiz) {
+          assertStudentStorage(deps.quiz.records, s.student.studentId);
+          assertStudentStorage(deps.quiz.quizLog, s.student.studentId);
+        }
+      }
       // A distress message is not kept in the state that is returned to the caller.
       const kept = intent === "distress" ? { message: "[distress message not retained]" } : {};
       return { ...kept, intent, attempts: 0, draft: null, check: null, doubt: null, memoryOp: null, quizTurn: null, trace: [{ node: "sense", detail }] };
@@ -320,7 +332,7 @@ export function buildMentorGraph(deps: GraphDeps) {
     .addEdge("draft_plan", "check_plan")
     .addConditionalEdges(
       "check_plan",
-      (s) => (s.check?.ok ? "respond" : s.attempts < MAX_DRAFTS ? "draft_plan" : "fallback"),
+      (s) => (s.check?.ok ? "respond" : s.attempts < (deps.maxDrafts ?? MAX_DRAFTS) ? "draft_plan" : "fallback"),
       ["respond", "draft_plan", "fallback"]
     )
     .addEdge("fallback", "write_back")

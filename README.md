@@ -60,3 +60,21 @@ The reinjected memory block goes into the prompt; the answer cites memory ids. B
 - **Enterprise workflow**: point `remember` at your CRM export; `ask` becomes account context on demand.
 
 Rubric and tracks: [docs/community/hackathon-guide.md](../../docs/community/hackathon-guide.md). Engine spec: [engines/hmem/AGENTS.md](../../engines/hmem/AGENTS.md).
+
+## Required environment variables
+
+- `METERLESS_TOKEN`
+- `HM_STUDY_SOURCE`
+- `HM_ZETARIS_URL`
+- `HM_ZETARIS_TABLE`
+- `HM_ZETARIS_USER`
+- `HM_ZETARIS_PASSWORD`
+
+The live launcher uses the Zetaris UI proxy at `http://127.0.0.1:3000`
+(`/api/auth/login` and `/api/proxy/query/sql/start`), rather than the direct
+REST API on port 8888. Start the existing platform with `docker compose up -d`
+from `~/zetaris-setup/zetaris-platform` first. The launcher validates the local
+configuration and checks the selected TCP port before collecting credentials.
+Failures print a fixed reason and exit code; provider exceptions and credentials
+are suppressed. Exit 2 means invalid configuration or empty credentials, exit 3
+means the port is unreachable, and verifier failures preserve the child exit code.

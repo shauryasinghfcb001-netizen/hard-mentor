@@ -1,3 +1,4 @@
+import { fictionalSandbox } from "../src/consent/storageGate.ts";
 // End-to-end (mocked) tests for the model-draft safety wiring. The path under
 // test is the real one: converse -> graph draft_plan -> createModelPlanner
 // (validate on) -> existing checker. The model is a scripted stub; fetch is
@@ -54,7 +55,7 @@ function stubModel(reply: Reply): ChatModel & { prompts: string[] } {
 }
 
 function setup(model: ChatModel, opts: { memory?: boolean; kabir?: boolean } = {}) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "hm-wire-"));
+  const root = fictionalSandbox("hm-wire-");
   const records = path.join(root, "study-records.csv");
   fs.copyFileSync("seed/study-records.csv", records);
   if (opts.kabir) fs.appendFileSync(records, "kabir,physics:electrostatics,physics,Electrostatics,0.4,0.8\n");
@@ -140,7 +141,7 @@ for (const [name, reply, code] of REJECTED) {
     await intake(say);
     const r = await say(ASK);
     const d = r.state!.draft!;
-    assert.match(d.producedBy ?? "", new RegExp(`^rule-planner-v1 \\(rules; model rejected: ${code}`));
+    assert.match(d.producedBy ?? "", new RegExp(`^rule-planner-v1 \\(rules; model rejected: .*${code}`));
     assert.notEqual(r.reply, "MODEL-PLAN: top topic first.");
     assert.match(r.reply, /^Today: /, "reply is the rule planner's text");
     assert.ok(r.state!.trace.some((t) => t.node === "draft_plan" && t.detail.includes("model rejected")));

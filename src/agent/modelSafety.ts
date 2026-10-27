@@ -19,7 +19,8 @@ export type ProposalIssueCode =
   | "foreign_evidence"
   | "unknown_field"
   | "invalid_minutes"
-  | "over_time";
+  | "over_time"
+  | "checker_rejected";
 
 export interface ProposalIssue {
   code: ProposalIssueCode;
@@ -66,6 +67,7 @@ export function validateModelDraft(text: string, ctx: ValidationContext): Valida
     if (f.rule === "known_topics") issue("unknown_topic", f.detail);
     else if (f.rule === "hours_fit") issue("over_time", f.detail);
     else if (f.rule === "positive_minutes") issue("invalid_minutes", f.detail);
+    else issue("checker_rejected", `${f.rule}: ${f.detail}`);
   }
 
   const rawReasons: any[] = Array.isArray(raw?.reasons) ? raw.reasons : [];
@@ -92,6 +94,9 @@ export function validateModelDraft(text: string, ctx: ValidationContext): Valida
     }
   });
 
+  if (!draft.reasons.some(r => r.ref.kind === "data_row" || r.ref.kind === "memory")) {
+    issue("missing_evidence", "at least one supplied data_row or memory reference is required");
+  }
   return issues.length ? { ok: false, issues } : { ok: true, draft };
 }
 

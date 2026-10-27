@@ -1,3 +1,4 @@
+import { fictionalSandbox } from "../src/consent/storageGate.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -30,7 +31,7 @@ function scriptedModel(replies: (string | Error)[]): ChatModel & { prompts: Chat
 }
 
 async function seeded() {
-  const mem = await openStudentMemory(RIYA.studentId, { dataRoot: fs.mkdtempSync(path.join(os.tmpdir(), "hm-mp-")) });
+  const mem = await openStudentMemory(RIYA.studentId, { dataRoot: fictionalSandbox("hm-mp-") });
   const rec = rememberPattern(mem, RIYA_EVENING_SKIP_PATTERN);
   return { mem, memId: rec.id as string };
 }

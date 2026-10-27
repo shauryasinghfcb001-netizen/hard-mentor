@@ -1,0 +1,434 @@
+// Strict model-proposal schema, claim validator, and deterministic baseline comparison.
+//
+// Verifies model-proposed study tasks OFFLINE against supplied Zetaris data rows.
+// Public interfaces of Planner and ChatModel remain untouched.
+
+import { z } from "zod";
+import { MASTERED_AT, rankTopics, type TopicState } from "../core/priority.ts";
+import type { StudyDataSource } from "../data/studyData.ts";
+import type { ChatModel } from "../llm/client.ts";
+import { extractJson } from "./modelPlanner.ts";
+
+export type RunStatus =
+  | "model_ok_validated"
+  | "model_ok_rejected"
+  | "model_failed"
+  | "baseline_only"
+  | "zetaris_unavailable";
+
+// --- Proposal Schema ---
+
+export const EvidenceRefSchema = z.union([
+  z.object({ id: z.string().min(1), field: z.string().min(1) }).strict(),
+  z.object({ row_id: z.string().min(1), field: z.string().min(1) }).strict(),
+]);
+
+export interface EvidenceRef {
+  id: string;
+  field: string;
+}
+
+export const TaskProposalSchema = z.union([
+  z.object({
+    topic_id: z.string().min(1),
+    reason: z.string().min(1),
+    evidence: z.array(EvidenceRefSchema).min(1),
+    minutes: z.number().int().positive(),
+  }).strict(),
+  z.object({
+    topic_id: z.string().min(1),
+    reason: z.string().min(1),
+    evidence_references: z.array(EvidenceRefSchema).min(1),
+    minutes: z.number().int().positive(),
+  }).strict(),
+  z.object({
+    topic_id: z.string().min(1),
+    short_reason: z.string().min(1),
+    evidence: z.array(EvidenceRefSchema).min(1),
+    minutes: z.number().int().positive(),
+  }).strict(),
+  z.object({
+    topic_id: z.string().min(1),
+    short_reason: z.string().min(1),
+    evidence_references: z.array(EvidenceRefSchema).min(1),
+    minutes: z.number().int().positive(),
+  }).strict(),
+]);
+
+export interface TaskProposal {
+  topic_id: string;
+  reason: string;
+  evidence: EvidenceRef[];
+  minutes: number;
+}
+
+export function parseTaskProposal(raw: unknown): TaskProposal {
+  const parsed = TaskProposalSchema.parse(raw);
+  const reason = "reason" in parsed ? parsed.reason : parsed.short_reason;
+  const rawEvidence = "evidence" in parsed ? parsed.evidence : parsed.evidence_references;
+  const evidence: EvidenceRef[] = rawEvidence.map((e) => ({
+    id: "id" in e ? e.id : e.row_id,
+    field: e.field,
+  }));
+  return {
+    topic_id: parsed.topic_id,
+    reason,
+    evidence,
+    minutes: parsed.minutes,
+  };
+}
+
+// --- Claim Validator ---
+
+export interface ZetarisEvidenceRow {
+  student_id?: string;
+  studentId?: string;
+  topic_id?: string;
+  topicId?: string;
+  subject?: string;
+  name?: string;
+  mastery?: number | string;
+  marks_weight?: number | string;
+  marksWeight?: number | string;
+  sourceRow?: string;
+  [key: string]: unknown;
+}
+
+export interface ValidationContext {
+  studentId: string;
+  timeLimitMinutes: number;
+  evidenceRows: ZetarisEvidenceRow[];
+}
+
+export interface ValidationResult {
+  ok: boolean;
+  reason?: string;
+  proposal?: TaskProposal;
+}
+
+export function validateProposal(
+  proposal: unknown,
+  context: ValidationContext
+): ValidationResult {
+  let parsed: TaskProposal;
+  try {
+    parsed = parseTaskProposal(proposal);
+  } catch (err) {
+    return {
+      ok: false,
+      reason: `proposal schema rejected: ${(err as Error).message}`,
+    };
+  }
+
+  // 1. topic_id must exist in supplied evidence rows
+  const topicRow = context.evidenceRows.find(
+    (r) => (r.topic_id ?? r.topicId) === parsed.topic_id
+  );
+  if (!topicRow) {
+    return {
+      ok: false,
+      reason: `unknown topic "${parsed.topic_id}": does not exist in supplied evidence rows`,
+      proposal: parsed,
+    };
+  }
+
+  // 2. Every evidence reference must resolve to a supplied row and field
+  if (parsed.evidence.length === 0) {
+    return {
+      ok: false,
+      reason: "proposal has no evidence references",
+      proposal: parsed,
+    };
+  }
+
+  for (const ref of parsed.evidence) {
+    const row = context.evidenceRows.find((r) => {
+      if (r.sourceRow && r.sourceRow === ref.id) return true;
+      if ((r.topic_id ?? r.topicId) === ref.id) return true;
+      if ((r as any).id && (r as any).id === ref.id) return true;
+      if ((r as any).row_id && (r as any).row_id === ref.id) return true;
+      return false;
+    });
+
+    if (!row) {
+      return {
+        ok: false,
+        reason: `dangling evidence reference: row id "${ref.id}" not found in supplied evidence rows`,
+        proposal: parsed,
+      };
+    }
+
+    // Safety check: evidence row must belong to this student if student_id is recorded
+    const rowStudent = row.student_id ?? row.studentId;
+    if (rowStudent && rowStudent !== context.studentId) {
+      return {
+        ok: false,
+        reason: `evidence reference "${ref.id}" belongs to student "${rowStudent}", not "${context.studentId}"`,
+        proposal: parsed,
+      };
+    }
+
+    // Field must exist on row
+    const field = ref.field;
+    const hasField =
+      field in row ||
+      (field === "marks_weight" && "marksWeight" in row) ||
+      (field === "marksWeight" && "marks_weight" in row) ||
+      (field === "topic_id" && "topicId" in row) ||
+      (field === "topicId" && "topic_id" in row);
+
+    if (!hasField) {
+      return {
+        ok: false,
+        reason: `evidence reference field "${field}" does not exist in row "${ref.id}"`,
+        proposal: parsed,
+      };
+    }
+  }
+
+  // 3. Minutes must be positive and fit stated time limit
+  if (parsed.minutes <= 0) {
+    return {
+      ok: false,
+      reason: `minutes must be positive: got ${parsed.minutes}`,
+      proposal: parsed,
+    };
+  }
+
+  if (parsed.minutes > context.timeLimitMinutes) {
+    return {
+      ok: false,
+      reason: `over time limit: planned ${parsed.minutes} min, limit is ${context.timeLimitMinutes} min`,
+      proposal: parsed,
+    };
+  }
+
+  return {
+    ok: true,
+    proposal: parsed,
+  };
+}
+
+// --- Deterministic Baseline & Comparison (T2) ---
+
+export interface BaselineRecommendation {
+  topic_id: string;
+  minutes: number;
+  reason: string;
+  sourceRow?: string;
+}
+
+export function computeBaselineRecommendation(
+  rows: ZetarisEvidenceRow[],
+  timeLimitMinutes: number,
+  daysToExam = 30
+): BaselineRecommendation | null {
+  if (!rows || rows.length === 0) return null;
+  const states: TopicState[] = rows.map((r, i) => ({
+    topicId: (r.topic_id ?? r.topicId ?? `topic-${i}`) as string,
+    subject: (r.subject ?? "general") as string,
+    name: (r.name ?? r.topic_id ?? r.topicId ?? `Topic ${i}`) as string,
+    mastery: typeof r.mastery === "number" ? r.mastery : Number(r.mastery ?? 0.5),
+    marksWeight:
+      typeof r.marks_weight === "number"
+        ? r.marks_weight
+        : typeof r.marksWeight === "number"
+          ? r.marksWeight
+          : Number(r.marks_weight ?? r.marksWeight ?? 0.5),
+    sourceRow: (r.sourceRow ?? `row#${i + 1}`) as string,
+  }));
+
+  const ranked = rankTopics(states, daysToExam);
+  const unmastered = ranked.filter((t) => t.mastery < MASTERED_AT);
+  const top = unmastered[0] ?? ranked[0];
+  if (!top) return null;
+
+  return {
+    topic_id: top.topicId,
+    minutes: Math.min(60, timeLimitMinutes),
+    reason: `Deterministic baseline: top priority topic (priority ${top.priority.toFixed(3)}, mastery ${top.mastery.toFixed(2)})`,
+    sourceRow: top.sourceRow,
+  };
+}
+
+export function renderBaselineComparison(input: {
+  status: RunStatus;
+  baseline: BaselineRecommendation | null;
+  proposal?: TaskProposal | null;
+  rejectionReason?: string;
+}): string {
+  const lines: string[] = [];
+  lines.push(`=== Study Task Plan (${input.status}) ===`);
+
+  if (input.status === "baseline_only") {
+    lines.push("Mode: Rule-based baseline only (Model not used or model failed; NOT a model success)");
+  } else if (input.status === "model_ok_validated") {
+    lines.push("Mode: Model proposal validated against evidence");
+  } else if (input.status === "model_ok_rejected") {
+    lines.push("Mode: Model proposal rejected by validator; baseline available");
+  } else if (input.status === "model_failed") {
+    lines.push("Mode: Model execution failed");
+  } else if (input.status === "zetaris_unavailable") {
+    lines.push("Mode: Zetaris data unavailable");
+  }
+
+  lines.push("");
+  lines.push("Deterministic Baseline Recommendation:");
+  if (input.baseline) {
+    lines.push(`  Topic:   ${input.baseline.topic_id}`);
+    lines.push(`  Minutes: ${input.baseline.minutes}`);
+    lines.push(`  Reason:  ${input.baseline.reason}`);
+    if (input.baseline.sourceRow) lines.push(`  Source:  ${input.baseline.sourceRow}`);
+  } else {
+    lines.push("  (no baseline available from supplied data)");
+  }
+
+  lines.push("");
+  lines.push("Model Proposal:");
+  if (input.proposal) {
+    lines.push(`  Topic:    ${input.proposal.topic_id}`);
+    lines.push(`  Minutes:  ${input.proposal.minutes}`);
+    lines.push(`  Reason:   ${input.proposal.reason}`);
+    lines.push(
+      `  Evidence: ${input.proposal.evidence.map((e) => `${e.id}.${e.field}`).join(", ")}`
+    );
+  } else {
+    lines.push("  (no model proposal)");
+  }
+
+  if (input.rejectionReason) {
+    lines.push("");
+    lines.push(`Rejection Reason: ${input.rejectionReason}`);
+  }
+
+  return lines.join("\n");
+}
+
+// --- Workflow Runner ---
+
+export interface RunProposalOptions {
+  model: ChatModel | null;
+  student: {
+    studentId: string;
+    timeLimitMinutes: number;
+    daysToExam?: number;
+  };
+  evidenceRows?: ZetarisEvidenceRow[];
+  studySource?: StudyDataSource | null;
+  promptText?: string;
+}
+
+export interface ModelProposalRunResult {
+  status: RunStatus;
+  proposal: TaskProposal | null;
+  baseline: BaselineRecommendation | null;
+  reason?: string;
+  error?: string;
+}
+
+export function buildProposalPrompt(
+  student: { studentId: string; timeLimitMinutes: number },
+  rows: ZetarisEvidenceRow[]
+): string {
+  const rowLines = rows.map(
+    (r) =>
+      `- [row ${r.sourceRow ?? r.topic_id ?? r.topicId}] topic: "${r.topic_id ?? r.topicId}", subject: "${r.subject}", name: "${r.name}", mastery: ${r.mastery}, marks_weight: ${r.marks_weight ?? r.marksWeight}`
+  );
+  return [
+    `Student: ${student.studentId}. Time limit: ${student.timeLimitMinutes} minutes.`,
+    "Available Zetaris study data rows:",
+    ...rowLines,
+    "Propose one study task for this student fitting their time limit.",
+  ].join("\n");
+}
+
+export async function runModelProposalWorkflow(
+  opts: RunProposalOptions
+): Promise<ModelProposalRunResult> {
+  let rows: ZetarisEvidenceRow[] = opts.evidenceRows ?? [];
+
+  if (opts.studySource) {
+    try {
+      const q = await opts.studySource.topicsFor(opts.student.studentId);
+      rows = q.rows;
+    } catch (err) {
+      return {
+        status: "zetaris_unavailable",
+        proposal: null,
+        baseline: null,
+        reason: `Zetaris unavailable: ${(err as Error).message}`,
+      };
+    }
+  }
+
+  const baseline = computeBaselineRecommendation(
+    rows,
+    opts.student.timeLimitMinutes,
+    opts.student.daysToExam ?? 30
+  );
+
+  if (!opts.model) {
+    return {
+      status: "baseline_only",
+      proposal: null,
+      baseline,
+      reason: "No model supplied; using deterministic rule baseline",
+    };
+  }
+
+  let replyText: string;
+  try {
+    const prompt = opts.promptText ?? buildProposalPrompt(opts.student, rows);
+    const res = await opts.model.chat([
+      {
+        role: "system",
+        content:
+          'You are a strict study planner. Respond with ONLY valid JSON: {"topic_id": string, "reason": string, "evidence": [{"id": string, "field": string}], "minutes": number}. No extra fields.',
+      },
+      { role: "user", content: prompt },
+    ]);
+    replyText = res.text;
+  } catch (err) {
+    return {
+      status: "baseline_only",
+      proposal: null,
+      baseline,
+      reason: `model error -> baseline_only: ${(err as Error).message}`,
+      error: (err as Error).message,
+    };
+  }
+
+  let rawJson: unknown;
+  try {
+    rawJson = extractJson(replyText);
+  } catch (err) {
+    return {
+      status: "baseline_only",
+      proposal: null,
+      baseline,
+      reason: `malformed JSON in model response -> baseline_only: ${(err as Error).message}`,
+      error: (err as Error).message,
+    };
+  }
+
+  const validation = validateProposal(rawJson, {
+    studentId: opts.student.studentId,
+    timeLimitMinutes: opts.student.timeLimitMinutes,
+    evidenceRows: rows,
+  });
+
+  if (!validation.ok) {
+    return {
+      status: "model_ok_rejected",
+      proposal: validation.proposal ?? null,
+      baseline,
+      reason: validation.reason,
+    };
+  }
+
+  return {
+    status: "model_ok_validated",
+    proposal: validation.proposal!,
+    baseline,
+  };
+}

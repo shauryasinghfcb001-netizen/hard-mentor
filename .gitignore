@@ -6,3 +6,10 @@ data/students/
 .env.*
 !.env.example
 .DS_Store
+
+# Local live evidence and credential state (existing tracked evidence is preserved).
+evidence/
+**/proxy-token
+**/*token*
+**/.meterless/
+**/.zetaris/

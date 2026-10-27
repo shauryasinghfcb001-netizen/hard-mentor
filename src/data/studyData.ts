@@ -1,3 +1,4 @@
+import { assertStudentStorage } from "../consent/storageGate.ts";
 // Study-record adapter (DECISIONS.md D16). The planner gets topic rows
 // (mastery, marks weight) through this interface, so a Zetaris federated
 // query can replace the local CSV later without touching the graph.
@@ -103,6 +104,8 @@ export function recordQuizResult(
   quizLog: string,
   q: { studentId: string; quizId: string; topicId: string; takenAt: string; correct: number; total: number; sources: string[] }
 ): QuizWriteBack {
+  assertStudentStorage(recordsFile, q.studentId);
+  assertStudentStorage(quizLog, q.studentId);
   if (!(q.total > 0 && q.correct >= 0 && q.correct <= q.total)) throw new Error("quiz result needs 0 <= correct <= total and total > 0");
   if (q.quizId.includes(",") || q.sources.some((s) => /[,;]/.test(s))) throw new Error("quiz id and sources must not contain , or ;");
   if (fs.existsSync(quizLog) && readQuizLog(quizLog).some((r) => r.studentId === q.studentId && r.quizId === q.quizId)) {

@@ -1,3 +1,4 @@
+import { assertStudentStorage } from "../consent/storageGate.ts";
 // Quiz -> mastery -> study records -> H-MEM, in one call. The next plan reads
 // the changed record and the quiz log, so the why card can cite the quiz.
 
@@ -17,6 +18,8 @@ export function submitQuiz(
   answers: string[],
   opts: { studentId: string; records: string; quizLog: string; takenAt: string; memory: StudentMemory | null }
 ): QuizStep {
+  assertStudentStorage(opts.records, opts.studentId);
+  assertStudentStorage(opts.quizLog, opts.studentId);
   // A quiz id is scored once per student: a repeated completion is not counted again.
   const prior = fs.existsSync(opts.quizLog) ? readQuizLog(opts.quizLog).find((r) => r.studentId === opts.studentId && r.quizId === quiz.id) : undefined;
   if (prior) return { kind: "already_recorded", row: prior };

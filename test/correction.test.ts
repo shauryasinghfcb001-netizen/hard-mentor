@@ -1,3 +1,4 @@
+import { fictionalSandbox } from "../src/consent/storageGate.ts";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -14,7 +15,7 @@ const KABIR: StudentProfile = { studentId: "kabir", name: "Kabir (fictional)", h
 const INTAKE = ["hi", "12th boards", "India", "90% in PCM", "15 Feb 2027", "CBSE"];
 
 function setup() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "hm-corr-"));
+  const root = fictionalSandbox("hm-corr-");
   const records = path.join(root, "study-records.csv");
   fs.copyFileSync("seed/study-records.csv", records);
   let t = Date.parse("2026-10-23T09:00:00Z");

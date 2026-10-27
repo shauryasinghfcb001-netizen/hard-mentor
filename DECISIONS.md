@@ -125,3 +125,49 @@ Trade-off: the ledger is no longer strictly append-only for those fields; entry 
 - (c) Propose a redaction feature upstream.
 
 Leaning (a) for the hackathon, plus (b) before any real student uses it.
+
+## 2026-10-26 research repair implementation note
+
+Digit-bearing exam labels use a conservative board-acronym + grade grammar. Authority discovery removes only grade/exam-label qualifiers, requires exact authority label/alias matching, and never treats another grade’s date as the requested exam date. This is implementation within the evening handoff scope; no pending owner decision is resolved. See BUILD_STATUS.md for verification and remaining blockers.
+
+
+**2026-10-26 research/H-MEM batch:** Owner authorized one further bounded research acceptance session and one fresh existing credential-availability check with a conditional single model attempt. Research stopped at the JEE Main robots.txt 403; remaining cases not exercised; no retries authorized or performed. Credential recheck found no usable token; zero model requests. The owner authorized preparing, not implementing, the B13 proposal in docs/drafts/parent-consent-design-20261026.md. Actual pinned upstream H-MEM engine conformance passed 13/13; D15 application privacy policy remains unchanged and outside that engine suite.
+
+
+**2026-10-26 distress write guard:** Enforced the existing zero-write target before configuration and memory initialization. Cancelled quizzes remain closed in the running conversation through a volatile overlay, then persist on the next ordinary turn. No distress marker is saved. Restart-resumption behavior is an open owner decision because a crash before that ordinary turn can reload the old quiz. No restart policy change assumed.
+
+
+**2026-10-26 owner decision — saved-quiz resumption:** Keep the existing ability to resume saved quizzes after process restart; explicitly flag the limitation. A distress turn cancels the quiz in volatile memory without writing files. If the process restarts before a subsequent ordinary turn persists that cancellation, the earlier saved quiz can reopen. No durable distress marker or discard-on-restart policy is authorized by this decision. The earlier open restart-policy question is resolved; the limitation remains.
+
+## 2026-10-26 implementation continuation — development consent defaults
+
+The owner now authorizes implementation and fictional, isolated tests (supersedes
+review-only scope for these components). Development defaults: pending consent is
+memory-only, expires after 30 minutes and is discarded on restart; explicit
+versioned parent/legal-guardian attestation plus a single-use token; no claim that
+token possession verifies parental identity. A confirmed development grant lasts
+only in the current service instance until withdrawal. The request token's expiry
+is not an invented production consent-retention period.
+
+Minimal simulated receipts are held only in memory and removed with the associated
+student's data through authenticated parent/student withdrawal. Withdrawal revokes
+storage, invalidates pending tokens and stale application memory handles, deletes
+known associated session/memory/quiz/history/study records and retains only a
+content-free deletion audit event. Other students' rows remain. Deletion failures
+leave access revoked and return failure; they are never reported as successful
+deletion. Production retention, parental verification and real email remain open.
+
+Synthetic test fixture capabilities apply only to factory-created OS temporary
+roots. Normal product roots have no grant issuer and remain locked. Simulated
+consent roots cannot also carry the fixture-restart marker. Existing saved quiz
+resumption and the documented distress/restart limitation remain unchanged; the
+new handle invalidation applies to explicit consent withdrawal/deletion.
+
+Mentor AI is the source at /Volumes/External SSD/Documents/Codex/cbse-90-board-mentor
+for https://cbse-90-board-mentor.netlify.app/. Its existing external-agent contract
+accepts {userId,message,context,lang,allowedActions} and returns {reply,action}.
+Use that boundary, with host-side identity mapping and authentication; browser
+context is never authoritative study data. The current upstream boundary does not
+forward its memory toggle: local H-MEM is conservatively disabled in this adapter.
+It supports English explicitly; other languages receive an honest limitation.
+No source, website, server configuration or production data on the SSD was changed.

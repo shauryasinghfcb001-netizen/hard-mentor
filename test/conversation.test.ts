@@ -1,8 +1,10 @@
+import { fictionalSandbox } from "../src/consent/storageGate.ts";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+import { createHash } from "node:crypto";
 import { converse, loadSession, parseDate, type ConversationEnv, type StudentProfile } from "../src/agent/conversation.ts";
 import { classifyIntent } from "../src/agent/graph.ts";
 import { rulePlanner } from "../src/agent/planner.ts";
@@ -18,7 +20,7 @@ const KABIR: StudentProfile = { studentId: "kabir", name: "Kabir (fictional)", h
 const INTAKE = ["hi", "12th boards", "India", "90% in PCM", "15 Feb 2027", "CBSE"];
 
 function setup(opts: { memory?: boolean; kabirElectrostatics?: boolean } = {}) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "hm-conv-"));
+  const root = fictionalSandbox("hm-conv-");
   const records = path.join(root, "study-records.csv");
   fs.copyFileSync("seed/study-records.csv", records);
   if (opts.kabirElectrostatics) fs.appendFileSync(records, "kabir,physics:electrostatics,physics,Electrostatics,0.4,0.8\n");
@@ -156,6 +158,68 @@ test("distress during a quiz or during intake overrides everything and writes no
   assert.ok(!fs.existsSync(env.quizLog));
 });
 
+test("distress never initializes memory or writes session files, even with invalid study configuration", async () => {
+  const { env } = setup({ memory: true });
+  env.memoryFor = async () => { throw new Error("distress must not open student persistence"); };
+  const before = fs.readdirSync(path.dirname(env.records));
+  const prior = process.env.HM_STUDY_SOURCE;
+  process.env.HM_STUDY_SOURCE = "invalid-for-test";
+  try {
+    const result = await converse(env, RIYA, "I want to die");
+    assert.equal(result.state?.outcome, "distress_override");
+    assert.equal(fs.existsSync(env.sessionsDir), false);
+    assert.deepEqual(fs.readdirSync(path.dirname(env.records)), before);
+  } finally {
+    if (prior === undefined) delete process.env.HM_STUDY_SOURCE;
+    else process.env.HM_STUDY_SOURCE = prior;
+  }
+});
+
+test("distress leaves every existing file unchanged; an interrupted quiz cannot score on the next turn", async () => {
+  const { env, say, records } = setup({ memory: true });
+  await intake(say);
+  await say("quiz me");
+  const answers = letters(env, "riya").join(", ");
+  const snapshot = (dir: string): Record<string, string> => Object.fromEntries(fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+    const full = path.join(dir, entry.name);
+    return entry.isDirectory() ? Object.entries(snapshot(full)) : [[full, `${fs.statSync(full).mtimeMs}:${createHash("sha256").update(fs.readFileSync(full)).digest("hex")}`]];
+  }));
+  const before = snapshot(path.dirname(records));
+  const result = await say("I want to die");
+  assert.equal(result.state?.outcome, "distress_override");
+  assert.deepEqual(snapshot(path.dirname(records)), before);
+  assert.equal(loadSession(env, "riya")!.activeQuiz, null, "quiz closes in memory without a distress write");
+  const again = await say(answers);
+  assert.equal(again.state?.quizTurn?.kind, "no_open_quiz");
+  assert.ok(!fs.existsSync(env.quizLog));
+});
+
+test("an interrupted quiz overlay does not close another fictional student's quiz", async () => {
+  const { env, say } = setup({ kabirElectrostatics: true });
+  await intake(say, RIYA);
+  await intake(say, KABIR);
+  await say("quiz me", RIYA);
+  await say("quiz me", KABIR);
+  const kabirAnswers = letters(env, "kabir").join(", ");
+  await say("I want to die", RIYA);
+  assert.equal(loadSession(env, "riya")!.activeQuiz, null);
+  assert.ok(loadSession(env, "kabir")!.activeQuiz);
+  const result = await say(kabirAnswers, KABIR);
+  assert.equal(result.state?.quizTurn?.kind, "scored");
+  assert.deepEqual(readQuizLog(env.quizLog).map(r => r.studentId), ["kabir"]);
+});
+
+test("broken saved session data cannot block the distress response or trigger repair writes", async () => {
+  const { env } = setup();
+  fs.mkdirSync(env.sessionsDir);
+  const file = path.join(env.sessionsDir, "riya.json");
+  fs.writeFileSync(file, "{not valid JSON");
+  env.memoryFor = async () => { throw new Error("must not initialize storage"); };
+  const result = await converse(env, RIYA, "I want to die");
+  assert.equal(result.state?.outcome, "distress_override");
+  assert.equal(fs.readFileSync(file, "utf8"), "{not valid JSON");
+});
+
 test("routing, answer parsing, dates and the duplicate guard", () => {
   assert.equal(classifyIntent("quiz me").intent, "quiz_start");
   assert.equal(classifyIntent("Give me a quiz on dipoles, I want to die").intent, "distress");
@@ -175,10 +239,35 @@ test("routing, answer parsing, dates and the duplicate guard", () => {
   assert.equal(parseDate("2027-02-30"), null);
   assert.equal(parseDate("soon"), null);
 
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hm-dup-"));
+  const dir = fictionalSandbox("hm-dup-");
   const rec = path.join(dir, "r.csv");
   fs.copyFileSync("seed/study-records.csv", rec);
   const row = { studentId: "riya", quizId: "quiz-x", topicId: "physics:electrostatics", takenAt: "2026-10-23T10:00:00Z", correct: 5, total: 5, sources: [] };
   recordQuizResult(rec, path.join(dir, "log.csv"), row);
   assert.throws(() => recordQuizResult(rec, path.join(dir, "log.csv"), row), /already recorded/);
+});
+
+test('free-text why explains the saved plan without a planner call or NCERT refusal', async () => {
+  const { env, say } = setup();
+  await intake(say);
+  const planned = await say('Plan my study for today.');
+  const original = env.planner;
+  env.planner = { ...original, async draft() { throw new Error('why must not call planner'); } };
+  for (const message of ['why', 'why?', 'why this plan?', 'explain my plan']) {
+    const reply = await say(message);
+    assert.equal(reply.state, null);
+    assert.deepEqual(reply.why, planned.why);
+    assert.match(reply.reply, /Decision:.*\nWhy:/);
+    assert.doesNotMatch(reply.reply, /out.of.syllabus|can't answer|not wired yet/i);
+  }
+  assert.equal(classifyIntent('why?').intent, 'plan');
+  assert.equal(classifyIntent('why do charges repel?').intent, 'doubt');
+});
+
+test('why before a first plan asks for a plan rather than refusing NCERT', async () => {
+  const { say } = setup();
+  await intake(say);
+  const reply = await say('why');
+  assert.match(reply.reply, /no previous plan/);
+  assert.equal(reply.why, null);
 });

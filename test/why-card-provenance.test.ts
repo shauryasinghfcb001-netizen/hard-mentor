@@ -13,18 +13,18 @@ const base = {
 };
 const state = (extra: Record<string, unknown>) => ({ ...base, student: { ...student, ...extra } }) as unknown as MentorState;
 
-// Output of the previous code for this state (golden, captured before the change).
+// No provenance must make no claim about connector availability.
 const GOLDEN_NO_PROVENANCE = [
   "Decision: swap (sent)",
   "Why:",
   "  - Mastery is low  [data_row: csv:study-records.csv#2]",
   "Loop:",
   "  1. [plan] ranked 3 topics",
-  "SQL: (not available: Zetaris federation not wired yet)",
+  "SQL: (not available for this turn; see source provenance)",
 ].join("\n");
 
 describe("OFFLINE MOCK - not Zetaris connection evidence: why card provenance", () => {
-  test("no provenance (CSV default): card and rendering are byte-identical to before", () => {
+  test("no provenance (CSV default): card reports missing per-turn SQL honestly", () => {
     const card = buildWhyCard(state({}));
     assert.equal(renderWhyCard(card), GOLDEN_NO_PROVENANCE);
     assert.equal(card.sql, null);

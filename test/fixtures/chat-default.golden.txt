@@ -51,4 +51,4 @@ Mentor > Today: Electrostatics first for 90 min, then Integrals and Organic Chem
    |   6. [check_plan] attempt 1 passed all rules
    |   7. [respond] sent decision daily_plan
    |   8. [write_back] H-MEM episode mem-1 written (decision summary, not the raw message)
-   | SQL: (not available: Zetaris federation not wired yet)
+   | SQL: (not available for this turn; see source provenance)

@@ -1,3 +1,4 @@
+import { fictionalSandbox, assertStudentStorage } from "../src/consent/storageGate.ts";
 // Terminal chat with the mentor: one message per stdin line. This is a
 // terminal demonstration of the conversation layer, not a student interface.
 //
@@ -78,11 +79,12 @@ export interface ChatRun {
 }
 
 export async function runChat({ args, env: processEnv, lines, log, model }: ChatRun): Promise<void> {
-  const dataRoot = args.find((a) => !a.startsWith("--"));
+  const dataRoot = args.includes("--fictional-scratch") ? fictionalSandbox("hm-chat-fictional-") : args.find((a) => !a.startsWith("--"));
   if (!dataRoot) throw new Error("usage: chat.ts <dataRoot> [--today YYYY-MM-DD] [--quiet] [--web]");
   const today = args.includes("--today") ? args[args.indexOf("--today") + 1] : new Date().toISOString().slice(0, 10);
   const quiet = args.includes("--quiet");
   const root = path.resolve(dataRoot);
+  assertStudentStorage(path.join(root, "study-records.csv"), "riya");
   fs.mkdirSync(root, { recursive: true });
   const records = path.join(root, "study-records.csv");
   if (!fs.existsSync(records)) fs.copyFileSync("seed/study-records.csv", records);

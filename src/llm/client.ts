@@ -44,6 +44,29 @@ export const PROVIDERS = {
 
 export type ProviderName = keyof typeof PROVIDERS;
 
+export interface MeterlessFailureDetails {
+  meterlessCategory?: 'system_message_order' | 'provider_error' | 'rate_limit_exceeded' | 'context_length_exceeded';
+  meterlessRequestId?: string;
+}
+
+/** Fixed protocol vocabulary only; provider prose is never retained. */
+export function meterlessFailureDetails(body: unknown): MeterlessFailureDetails {
+  const value = body as any;
+  const details: MeterlessFailureDetails = {};
+  if (value?.error?.meterless_detail === 'System prompt should always be the first message in `messages`.') {
+    details.meterlessCategory = 'system_message_order';
+  } else {
+    const code = value?.error?.code;
+    if (code === 'provider_error' || code === 'rate_limit_exceeded' || code === 'context_length_exceeded') {
+      details.meterlessCategory = code;
+    }
+  }
+  const id = value?.meterless?.request_id;
+  // Only the observed chat-completion identifier class, with a bounded opaque suffix.
+  if (typeof id === 'string' && /^chatcmpl-[A-Za-z0-9]{8,64}$/.test(id)) details.meterlessRequestId = id;
+  return details;
+}
+
 export class ModelError extends Error {
   constructor(
     message: string,
@@ -88,7 +111,9 @@ export function openAICompatible(cfg: ClientConfig): ChatModel {
             signal: AbortSignal.timeout(timeoutMs),
           });
           if (!res.ok) {
-            const body = redact((await res.text()).slice(0, 300), cfg.apiKey);
+            const body = cfg.provider === 'meterless'
+              ? JSON.stringify(meterlessFailureDetails(await res.json().catch(() => null)))
+              : redact((await res.text()).slice(0, 300), cfg.apiKey);
             const retryable = res.status === 429 || res.status >= 500;
             throw new ModelError(`${cfg.provider} HTTP ${res.status}: ${body}`, res.status, retryable);
           }

@@ -1,3 +1,4 @@
+import { fictionalSandbox } from "../src/consent/storageGate.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -26,7 +27,7 @@ test("CSV source returns only the asked student's rows, with file#line provenanc
 });
 
 test("CSV source rejects a wrong header and out-of-range values", async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hm-csv-"));
+  const dir = fictionalSandbox("hm-csv-");
   const bad = path.join(dir, "bad.csv");
   fs.writeFileSync(bad, "id,topic\nriya,x\n");
   await assert.rejects(csvStudyData(bad).topicsFor("riya"), /expected header/);
@@ -45,7 +46,7 @@ test("graph plans from CSV rows; the why card cites the CSV line and still shows
 
 test("changed fictional marks in the CSV change the plan, and the why card names the new file and line", async () => {
   const { writeChangedCsv } = await import("../scripts/csv-plan-demo.ts");
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hm-csv-"));
+  const dir = fictionalSandbox("hm-csv-");
   const changed = path.join(dir, "study-records.after-quiz.csv");
   assert.deepEqual(writeChangedCsv(CSV, changed), ["line 2: physics:electrostatics mastery 0.35 -> 0.88", "line 4: maths:integrals mastery 0.5 -> 0.25"]);
   const plan = async (file: string) => {

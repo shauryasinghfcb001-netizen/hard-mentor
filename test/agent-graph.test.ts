@@ -1,3 +1,4 @@
+import { fictionalSandbox } from "../src/consent/storageGate.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -18,7 +19,7 @@ const student: StudentContext = {
 };
 
 async function seededMemory() {
-  const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), "hm-graph-"));
+  const dataRoot = fictionalSandbox("hm-graph-");
   const mem = await openStudentMemory(RIYA.studentId, { dataRoot });
   const rec = rememberPattern(mem, RIYA_EVENING_SKIP_PATTERN);
   return { mem, memoryId: rec.id as string };

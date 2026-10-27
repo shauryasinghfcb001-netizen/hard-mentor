@@ -1,3 +1,4 @@
+import { fictionalSandbox } from "../src/consent/storageGate.ts";
 // Baseline-vs-model comparison in the real conversation output (converse -> graph -> why card).
 // Offline and mocked: the model is a scripted stub and fetch fails the test if it is ever called.
 import assert from "node:assert/strict";
@@ -47,7 +48,7 @@ function stubModel(reply: Reply): ChatModel {
 }
 
 async function run(planner: Planner) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "hm-cmp-"));
+  const root = fictionalSandbox("hm-cmp-");
   const records = path.join(root, "study-records.csv");
   fs.copyFileSync("seed/study-records.csv", records);
   let t = Date.parse("2026-10-23T09:00:00Z");
@@ -108,7 +109,7 @@ const GOLDEN_CARD = [
   "  6. [check_plan] attempt 1 passed all rules",
   "  7. [respond] sent decision daily_plan",
   "  8. [write_back] memory OFF: no write-back",
-  "SQL: (not available: Zetaris federation not wired yet)",
+  "SQL: (not available for this turn; see source provenance)",
 ].join("\n");
 
 test("default (rule planner): reply and why card are byte-identical to the golden, no comparison", async () => {
@@ -160,7 +161,7 @@ test("rejected: baseline is the plan, reason codes shown, raw model text never s
 
 test("rejected for a rule violation lists its code; its blocks are not displayed", async () => {
   const { card } = await run(validating((p) => plan(p, { blocks: [{ topicId: "bio:cells", minutes: 30, activity: "a" }] })));
-  assert.ok(card.includes("  Model proposal: rejected (unknown_topic); not used, not shown as a plan"));
+  assert.ok(card.includes("  Model proposal: rejected (checker_rejected, unknown_topic); not used, not shown as a plan"));
   assert.ok(!card.includes("bio:cells 30min"));
   assert.ok(card.includes("  Plan sent: the rule baseline"));
 });

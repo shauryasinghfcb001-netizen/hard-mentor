@@ -1,3 +1,4 @@
+import { fictionalSandbox } from "../src/consent/storageGate.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -12,7 +13,7 @@ import { RIYA, RIYA_DAYS_TO_EXAM, RIYA_EVENING_SKIP_PATTERN, RIYA_SWAP_REQUEST, 
 const student: StudentContext = { studentId: RIYA.studentId, name: RIYA.name, hoursPerDay: RIYA.dailyStudyHours, daysToExam: RIYA_DAYS_TO_EXAM, topics: RIYA_TOPICS };
 
 async function seeded() {
-  const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), "hm-memops-"));
+  const dataRoot = fictionalSandbox("hm-memops-");
   const mem = await openStudentMemory(RIYA.studentId, { dataRoot, clock: () => Date.UTC(2026, 9, 23, 14) });
   const rec = rememberPattern(mem, RIYA_EVENING_SKIP_PATTERN);
   return { mem, dataRoot, memId: rec.id as string };

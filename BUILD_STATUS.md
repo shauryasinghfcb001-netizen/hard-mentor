@@ -320,3 +320,84 @@ Side effects on known questions: "Why do like charges push each other away?" now
 4. Zetaris source behind `StudyDataSource` once Q4 is settled.
 5. Distress screen: more wording families only from new dev examples, never from v2 or the 44-case strings.
 6. Q1: Shaurya decides whether a Nightshift run is required. If yes, run the hotspot and probe it with `probeMeterless` before any chat call.
+
+## 2026-10-26 evening research repair batch (Codex)
+
+- Remote heads checked against GitHub: published checkpoint remains d5dfec5; local HEAD remains 43c83e6. No commit, push, merge or deployment performed.
+- Preserved existing grade-marker edits and added a narrow digit-bearing exam-label grammar, narrative rejection before DNS, and board-only discovery for grade labels. Board discovery requires an exact label/alias match. Grade-specific dates must name the requested exam label; authority-wide dates are insufficient.
+- Files: src/context/webResearch.ts, test/webResearch.test.ts.
+- Validation: 250 tests passed, 0 failed; typecheck passed; git diff --check passed. Initial sandbox test run could not bind the loopback security-test server; the full suite passed outside the sandbox. These are offline tests, not live integration evidence.
+- Exactly one live research attempt: CBSE Class 12 -> Wikidata Q3347350 (Central Board of Secondary Education). Nominated URL http://www.cbse.nic.in/ refused by HTTPS-only policy. Result has zero official facts, no pages read, unknown exam date. Finding an authority does not verify grade-specific exam coverage. Evidence: evidence/research-repair-20261026.json. HM_LIVE_RESEARCH unset before/after, enabled only in child process. No retry or bypass performed.
+- Remaining B12: safely handle HTTP-only source nominations and verify official coverage in a separately authorized live attempt. Narrative filter is deliberately conservative: digit-bearing board labels require uppercase acronyms; it is not a general semantic PII detector.
+- Model lane: automatic approval review rejected the in-memory clipboard/token availability diagnostic. No clipboard content was accessed by that command, no model call sent. Explicit owner approval of credential availability inspection needed before continuing that lane.
+- B13 consent remains unapproved; integrated acceptance remains unproven. F7 H-MEM conformance suite: NOT RUN.
+
+## 2026-10-26 final blueprint and authorized credential check
+
+Owner-supplied target saved verbatim in `docs/product-blueprint-20261026.md`. It defines exam-agnostic intake and research; CBSE/Riya is the synthetic demo, not the coverage boundary. Target requirements remain distinct from verified implementation. Standing approval limits remain in force.
+
+Owner explicitly authorized the previously blocked in-memory credential availability check. Check executed successfully: no token in the existing environment names; clipboard readable/nonempty, but neither a valid connect link nor a token recognized by the existing resolver. Contents were neither printed nor saved. Zero model requests. Receipt: `evidence/credential-availability-20261026.json`. Live product-path acceptance remains blocked on a usable runtime credential.
+
+H-MEM conformance suite remains NOT RUN. The local vendored reference contains a Vitest smoke test, but no separately identified conformance suite. Smoke or application tests must not be relabelled as conformance. No package installed.
+
+
+## 2026-10-26 research and H-MEM batch (latest)
+
+- Section 3 of the target blueprint corrected: clipboard availability was checked after authorization; no usable credential was found. The newly authorized recheck also returned token_missing, zero model requests. No defect inferred. Receipt: evidence/model-availability-recheck-20261026.json. Verifier now explicitly disables automatic request retries.
+- Research: HTTP nominations become same-host HTTPS nominations before connecting, with no HTTP request/fallback. Raw HTTP remains refused. Discovery rejects unrelated names; requested grade labels are preserved. Quoted exam-name evidence is separate from authority identity. Dates are calendar-validated. Robots failures fail closed; exact-host redirect isolation and per-hop path permissions are checked before requests.
+- Full offline verification: npm test, 257/257 passing, 6 suites, zero failures/skips; npm run typecheck exit 0; git diff --check clean. Receipts: evidence/research-hmem-batch-20261026-tests.txt and evidence/research-hmem-batch-20261026-typecheck.txt.
+- Owner authorized ONE additional bounded live acceptance session. Non-CBSE JEE Main resolved via Wikidata Q4728938; https://jeemain.nta.nic.in/robots.txt returned 403. Session stopped immediately, no retries, no official pages or verified facts. Invented-exam and CBSE cases NOT RUN in that session. Parent live flag unset before/after, enabled only in child, 90-second cap. Receipt: evidence/research-acceptance-20261026.json. B12 acceptance remains OPEN; no further live research authorized by this consumed session.
+- Actual upstream H-MEM conformance runner/vectors located at the pinned engine revision, copied unmodified with SHA-256 provenance and run via the product engine loader. PASS 13/13. No dependency or engine update. In-memory synthetic vectors only. Receipt: evidence/hmem-conformance-20261026.txt; scope/trade-offs: docs/hmem-conformance-20261026.md.
+- Owner authorized drafting a parent-email/single-use-link consent design only. docs/drafts/parent-consent-design-20261026.md is for review; implementation, sender/hosting choice, email and grants remain gated.
+
+
+## 2026-10-26 distress persistence batch (latest)
+
+Reproduced two gaps with new conversation regressions before repair: invalid study-source configuration could block the distress response, and a distress turn rewrote the saved session. The earlier graph-only no-record proofs did not establish zero conversation filesystem writes.
+
+- Changed src/agent/conversation.ts and test/conversation.test.ts. Distress now bypasses study configuration, memory initialization and all save paths. Storage read errors do not block support. Tests compare all scratch files by modification time and SHA-256 and reject memory initialization on the override path.
+- Active quizzes close in a volatile session overlay; a following ordinary turn persists the closure and cannot score the cancelled attempt. No distress text is stored in the overlay. The overlay does not survive process restart: the older quiz can resume after a restart before an ordinary turn. Owner decided to KEEP saved-quiz resumption and flag this limitation (Oct 26). No durable distress marker was introduced. This resolves the policy decision, not the restart limitation.
+- Final verification after adding cross-student overlay isolation and corrupt-session regressions: npm test, 261 tests, 6 suites, 261 pass, zero fail/skip. npm run typecheck exit 0; git diff --check clean. Receipts: evidence/distress-write-guard-20261026-tests.txt and evidence/distress-write-guard-20261026-typecheck.txt. All fictional data in new scratch roots. No new live run, credential read, dependency, email, commit, push or deployment in this batch.
+- B12 official-fact acceptance, live model/product integration and B13 real-email consent remain unproven. H-MEM engine conformance stands at 13/13 PASS with the documented D15 wrapper caveat.
+
+## 2026-10-26 local product implementation continuation (latest)
+
+Owner authorized implementation and subsequently supplied DEVELOPMENT consent
+defaults. Full record: docs/implementation-continuation-20261026.md. Earlier
+review-only consent status is superseded for these local components only.
+
+- Implemented volatile request/challenge/receipt flow, 30-minute pending expiry,
+  explicit versioned attestation, single use, session/student binding, gate checks,
+  authenticated withdrawal and associated synthetic-data deletion. Normal product
+  storage remains locked; mock grants enable only their isolated fictional root.
+  Old memory handles cannot disclose/resurrect deleted records. Production parental
+  identity, email delivery and retention remain undecided/unimplemented.
+- Research now follows bounded exam links from an otherwise unnamed conducting-body
+  portal, supports operator-based nomination and extracts attributed syllabus/format
+  excerpts. One live session: Civil Services Examination lacked a site pointer,
+  invented exam safely unknown, CBSE robots.txt 403 stopped the session. All three
+  cases ran; zero official facts. No retry/bypass/JEE Main request. Operator repair
+  came afterward and has offline evidence only. B12 positive acceptance OPEN.
+- Live verifier expanded through cited quiz, exactly-once saving, actual-baseline
+  mastery/adaptation and next validated proposal. It uses the existing secure
+  Meterless resolver with retries off and no clipboard. Process environment gave
+  token_missing (zero model requests); Zetaris process environment not configured.
+  Automatic approval review rejected documented .env loading; command DID NOT RUN.
+  Integrated live acceptance remains OPEN, not fallback success.
+- Mentor AI source found on SSD (correct netlify.app product). Local adapter follows
+  its actual external-agent contract. Actual client over loopback and actual mentor
+  function with fake backend passed: intake/plan/cited quiz/5-of-5/one saved attempt/
+  mastery 0.35 -> 0.545/adapted plan. Rules only, no real backend/model/email calls.
+  Adapter English-only; H-MEM disabled because upstream omits the memory toggle.
+  SSD source and running website unchanged; no deployment or production claims.
+- Final suite 275/275, zero fail/skip; typecheck and diff whitespace check passed.
+  Evidence: implementation-20261026-suite-privacy-final.txt,
+  implementation-20261026-typecheck-privacy-final.txt,
+  mentor-ai-20261026-connected.txt, mentor-ai-20261026-source-provenance.json,
+  research-acceptance-20261026-implementation.json,
+  integrated-loop-20261026-current.json, integrated-loop-20261026-approval-block.json.
+  H-MEM engine conformance NOT rerun (prior 13/13 retained); wrapper privacy tests
+  included. Saved-quiz resumption and documented distress/restart limitation kept.
+- Preserved existing commits, dirty work, drafts and all earlier evidence. No new
+  service/account/dependency/spend, real email, commit/push/merge/deploy/publication
+  or submission performed. Full connected-product completion is NOT claimed.

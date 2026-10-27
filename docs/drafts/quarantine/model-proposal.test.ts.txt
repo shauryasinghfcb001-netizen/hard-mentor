@@ -1,0 +1,325 @@
+// OFFLINE MOCK - Model proposal schema, claim validator, and baseline tests.
+// All model interactions use scripted/fake ChatModel. No network or live models.
+
+import assert from "node:assert/strict";
+import { describe, test } from "node:test";
+import { ZodError } from "zod";
+import {
+  computeBaselineRecommendation,
+  parseTaskProposal,
+  renderBaselineComparison,
+  runModelProposalWorkflow,
+  TaskProposalSchema,
+  validateProposal,
+  type RunStatus,
+  type TaskProposal,
+  type ZetarisEvidenceRow,
+} from "../src/agent/modelProposal.ts";
+import type { ChatMessage, ChatModel } from "../src/llm/client.ts";
+
+function fakeModel(reply: string | Error): ChatModel & { calls: ChatMessage[][] } {
+  const calls: ChatMessage[][] = [];
+  return {
+    provider: "fake",
+    model: "scripted-test",
+    calls,
+    async chat(messages) {
+      calls.push(messages);
+      if (reply instanceof Error) throw reply;
+      return {
+        text: reply,
+        model: "scripted-test",
+        provider: "fake",
+        latencyMs: 5,
+        attempts: 1,
+      };
+    },
+  };
+}
+
+const SAMPLE_ROWS: ZetarisEvidenceRow[] = [
+  {
+    student_id: "riya",
+    topic_id: "physics:electrostatics",
+    subject: "physics",
+    name: "Electrostatics",
+    mastery: 0.35,
+    marks_weight: 0.8,
+    sourceRow: "zetaris:main.study_records#1",
+  },
+  {
+    student_id: "riya",
+    topic_id: "maths:integrals",
+    subject: "maths",
+    name: "Integrals",
+    mastery: 0.5,
+    marks_weight: 0.7,
+    sourceRow: "zetaris:main.study_records#2",
+  },
+  {
+    student_id: "kabir",
+    topic_id: "chemistry:organic",
+    subject: "chemistry",
+    name: "Organic Chemistry",
+    mastery: 0.4,
+    marks_weight: 0.6,
+    sourceRow: "zetaris:main.study_records#3",
+  },
+];
+
+const VALID_PROPOSAL: TaskProposal = {
+  topic_id: "physics:electrostatics",
+  reason: "High marks weight (0.8) and low mastery (0.35)",
+  evidence: [{ id: "zetaris:main.study_records#1", field: "mastery" }],
+  minutes: 60,
+};
+
+describe("T1: Strict Proposal Schema & Validation", () => {
+  test("valid proposal parses cleanly", () => {
+    const parsed = parseTaskProposal(VALID_PROPOSAL);
+    assert.equal(parsed.topic_id, "physics:electrostatics");
+    assert.equal(parsed.minutes, 60);
+    assert.equal(parsed.evidence.length, 1);
+  });
+
+  test("rejects extra fields on proposal root", () => {
+    const extra = { ...VALID_PROPOSAL, unexpected_field: "disallowed" };
+    assert.throws(() => TaskProposalSchema.parse(extra), ZodError);
+  });
+
+  test("rejects extra fields on evidence reference", () => {
+    const extraRef = {
+      ...VALID_PROPOSAL,
+      evidence: [{ id: "zetaris:main.study_records#1", field: "mastery", extra_prop: 123 }],
+    };
+    assert.throws(() => TaskProposalSchema.parse(extraRef), ZodError);
+  });
+
+  test("rejects missing required fields", () => {
+    const noMinutes = { topic_id: "physics:electrostatics", reason: "r", evidence: [{ id: "1", field: "f" }] };
+    assert.throws(() => TaskProposalSchema.parse(noMinutes), ZodError);
+
+    const noTopic = { reason: "r", evidence: [{ id: "1", field: "f" }], minutes: 60 };
+    assert.throws(() => TaskProposalSchema.parse(noTopic), ZodError);
+
+    const noEvidence = { topic_id: "physics:electrostatics", reason: "r", minutes: 60 };
+    assert.throws(() => TaskProposalSchema.parse(noEvidence), ZodError);
+  });
+});
+
+describe("T1: Claim Validator", () => {
+  const ctx = {
+    studentId: "riya",
+    timeLimitMinutes: 90,
+    evidenceRows: SAMPLE_ROWS,
+  };
+
+  test("valid proposal passes claim validation", () => {
+    const res = validateProposal(VALID_PROPOSAL, ctx);
+    assert.equal(res.ok, true);
+    assert.equal(res.proposal?.topic_id, "physics:electrostatics");
+  });
+
+  test("rejects unknown topic not in evidence rows", () => {
+    const proposal = {
+      ...VALID_PROPOSAL,
+      topic_id: "biology:genetics",
+    };
+    const res = validateProposal(proposal, ctx);
+    assert.equal(res.ok, false);
+    assert.match(res.reason!, /unknown topic/i);
+  });
+
+  test("rejects dangling evidence reference (missing row id)", () => {
+    const proposal = {
+      ...VALID_PROPOSAL,
+      evidence: [{ id: "zetaris:main.study_records#999", field: "mastery" }],
+    };
+    const res = validateProposal(proposal, ctx);
+    assert.equal(res.ok, false);
+    assert.match(res.reason!, /dangling evidence reference/i);
+  });
+
+  test("rejects evidence reference with non-existent field on row", () => {
+    const proposal = {
+      ...VALID_PROPOSAL,
+      evidence: [{ id: "zetaris:main.study_records#1", field: "non_existent_column" }],
+    };
+    const res = validateProposal(proposal, ctx);
+    assert.equal(res.ok, false);
+    assert.match(res.reason!, /field "non_existent_column" does not exist/i);
+  });
+
+  test("rejects proposal exceeding stated student time limit", () => {
+    const proposal = {
+      ...VALID_PROPOSAL,
+      minutes: 120, // ctx limit is 90
+    };
+    const res = validateProposal(proposal, ctx);
+    assert.equal(res.ok, false);
+    assert.match(res.reason!, /over time limit/i);
+  });
+
+  test("safety correction #7: rejects evidence belonging to a different student", () => {
+    // Record #3 belongs to student 'kabir', while student is 'riya'
+    const crossStudent = {
+      ...VALID_PROPOSAL,
+      topic_id: "maths:integrals",
+      evidence: [{ id: "zetaris:main.study_records#3", field: "mastery" }],
+    };
+    const res = validateProposal(crossStudent, ctx);
+    assert.equal(res.ok, false);
+    assert.match(res.reason!, /belongs to student "kabir", not "riya"/i);
+  });
+});
+
+describe("T1: Mocked Workflow Runner & RunStatus", () => {
+  const student = { studentId: "riya", timeLimitMinutes: 90 };
+
+  test("valid model proposal produces status model_ok_validated", async () => {
+    const model = fakeModel(JSON.stringify(VALID_PROPOSAL));
+    const out = await runModelProposalWorkflow({
+      model,
+      student,
+      evidenceRows: SAMPLE_ROWS,
+    });
+    assert.equal(out.status, "model_ok_validated" satisfies RunStatus);
+    assert.equal(out.proposal?.topic_id, "physics:electrostatics");
+    assert.ok(out.baseline);
+  });
+
+  test("unknown topic produces status model_ok_rejected", async () => {
+    const badTopic = { ...VALID_PROPOSAL, topic_id: "chemistry:unknown_topic" };
+    const model = fakeModel(JSON.stringify(badTopic));
+    const out = await runModelProposalWorkflow({
+      model,
+      student,
+      evidenceRows: SAMPLE_ROWS,
+    });
+    assert.equal(out.status, "model_ok_rejected" satisfies RunStatus);
+    assert.match(out.reason!, /unknown topic/i);
+    assert.ok(out.baseline);
+  });
+
+  test("dangling evidence reference produces status model_ok_rejected", async () => {
+    const dangling = {
+      ...VALID_PROPOSAL,
+      evidence: [{ id: "non-existent-row#99", field: "mastery" }],
+    };
+    const model = fakeModel(JSON.stringify(dangling));
+    const out = await runModelProposalWorkflow({
+      model,
+      student,
+      evidenceRows: SAMPLE_ROWS,
+    });
+    assert.equal(out.status, "model_ok_rejected" satisfies RunStatus);
+    assert.match(out.reason!, /dangling evidence reference/i);
+  });
+
+  test("over-time proposal produces status model_ok_rejected", async () => {
+    const overTime = { ...VALID_PROPOSAL, minutes: 180 };
+    const model = fakeModel(JSON.stringify(overTime));
+    const out = await runModelProposalWorkflow({
+      model,
+      student,
+      evidenceRows: SAMPLE_ROWS,
+    });
+    assert.equal(out.status, "model_ok_rejected" satisfies RunStatus);
+    assert.match(out.reason!, /over time limit/i);
+  });
+
+  test("malformed JSON falls back to baseline_only", async () => {
+    const model = fakeModel("not valid json at all {broken");
+    const out = await runModelProposalWorkflow({
+      model,
+      student,
+      evidenceRows: SAMPLE_ROWS,
+    });
+    assert.equal(out.status, "baseline_only" satisfies RunStatus);
+    assert.match(out.reason!, /malformed JSON/i);
+    assert.ok(out.baseline);
+  });
+
+  test("model error falls back to baseline_only and never reports model success", async () => {
+    const model = fakeModel(new Error("nvidia HTTP 503: Service Unavailable"));
+    const out = await runModelProposalWorkflow({
+      model,
+      student,
+      evidenceRows: SAMPLE_ROWS,
+    });
+    assert.equal(out.status, "baseline_only" satisfies RunStatus);
+    assert.match(out.reason!, /model error -> baseline_only/i);
+    assert.ok(out.baseline);
+    assert.equal(out.proposal, null);
+  });
+
+  test("zetaris unavailable reports zetaris_unavailable", async () => {
+    const mockZetarisSource = {
+      name: "zetaris",
+      kind: "zetaris" as const,
+      async topicsFor(): Promise<never> {
+        throw new Error("Zetaris unavailable: connection refused");
+      },
+    };
+    const model = fakeModel(JSON.stringify(VALID_PROPOSAL));
+    const out = await runModelProposalWorkflow({
+      model,
+      student,
+      studySource: mockZetarisSource,
+    });
+    assert.equal(out.status, "zetaris_unavailable" satisfies RunStatus);
+    assert.match(out.reason!, /Zetaris unavailable/i);
+  });
+});
+
+describe("T2: Deterministic Baseline Recommendation & Comparison Rendering", () => {
+  test("computes deterministic baseline from supplied data only", () => {
+    const b = computeBaselineRecommendation(SAMPLE_ROWS, 90, 30);
+    assert.ok(b);
+    assert.equal(b.topic_id, "physics:electrostatics");
+    assert.equal(b.minutes, 60);
+    assert.match(b.reason, /Deterministic baseline/);
+  });
+
+  test("renderBaselineComparison renders baseline beside valid model proposal", () => {
+    const baseline = computeBaselineRecommendation(SAMPLE_ROWS, 90, 30);
+    const rendered = renderBaselineComparison({
+      status: "model_ok_validated",
+      baseline,
+      proposal: VALID_PROPOSAL,
+    });
+    assert.match(rendered, /=== Study Task Plan \(model_ok_validated\) ===/);
+    assert.match(rendered, /Deterministic Baseline Recommendation:/);
+    assert.match(rendered, /physics:electrostatics/);
+    assert.match(rendered, /Model Proposal:/);
+  });
+
+  test("renderBaselineComparison never labels baseline_only as model success", () => {
+    const baseline = computeBaselineRecommendation(SAMPLE_ROWS, 90, 30);
+    const rendered = renderBaselineComparison({
+      status: "baseline_only",
+      baseline,
+      proposal: null,
+    });
+    assert.match(rendered, /NOT a model success/i);
+    assert.doesNotMatch(rendered, /model success: true/i);
+    assert.doesNotMatch(rendered, /model validated/i);
+  });
+
+  test("pure function: deterministic output for identical inputs", () => {
+    const baseline = computeBaselineRecommendation(SAMPLE_ROWS, 90, 30);
+    const r1 = renderBaselineComparison({
+      status: "model_ok_rejected",
+      baseline,
+      proposal: VALID_PROPOSAL,
+      rejectionReason: "test reason",
+    });
+    const r2 = renderBaselineComparison({
+      status: "model_ok_rejected",
+      baseline,
+      proposal: VALID_PROPOSAL,
+      rejectionReason: "test reason",
+    });
+    assert.equal(r1, r2);
+  });
+});

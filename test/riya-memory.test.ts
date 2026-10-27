@@ -1,3 +1,4 @@
+import { fictionalSandbox } from "../src/consent/storageGate.ts";
 // Milestone 1: Riya's study pattern written by one process is retrieved by a
 // second, separate process through real H-MEM (vendor/hmem), with trace and
 // ledger. A third process on an empty store is the memory-off control.
@@ -19,7 +20,7 @@ function run(mode: "write" | "read", dataRoot: string): any {
 }
 
 test("Riya's pattern survives process restart via H-MEM", () => {
-  const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), "hm-riya-"));
+  const dataRoot = fictionalSandbox("hm-riya-");
   const written = run("write", dataRoot);
   const read = run("read", dataRoot);
 
@@ -44,7 +45,7 @@ test("Riya's pattern survives process restart via H-MEM", () => {
 });
 
 test("memory-off control: empty store retrieves nothing", () => {
-  const empty = fs.mkdtempSync(path.join(os.tmpdir(), "hm-riya-off-"));
+  const empty = fictionalSandbox("hm-riya-off-");
   const read = run("read", empty);
   assert.equal(read.stateFileExisted, false);
   assert.equal(read.memories.length, 0);

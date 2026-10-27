@@ -1,3 +1,4 @@
+import { fictionalSandbox } from "../src/consent/storageGate.ts";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -17,7 +18,7 @@ const corpus = loadCorpus("corpus/ncert-phy12-ch1.json");
 const AT = "2026-10-23T10:00:00Z";
 
 function workCopy() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hm-journey-"));
+  const dir = fictionalSandbox("hm-journey-");
   const records = path.join(dir, "study-records.csv");
   fs.copyFileSync("seed/study-records.csv", records);
   return { records, quizLog: path.join(dir, "quiz-log.csv") };

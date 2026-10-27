@@ -1,3 +1,4 @@
+import { fictionalSandbox } from "../src/consent/storageGate.ts";
 // Regression tests for wiring and failure cases:
 // 1. Meterless adapter failure handling & fallback
 // 2. Zetaris opt-in fail-closed behavior (no silent CSV fallback)
@@ -147,7 +148,7 @@ test("Zetaris fail-closed wiring: converse() returns 'Zetaris unavailable' on fa
   const origSource = process.env.HM_STUDY_SOURCE;
   process.env.HM_STUDY_SOURCE = "zetaris";
   try {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hm-wire-fail-"));
+    const dir = fictionalSandbox("hm-wire-fail-");
     const env = makeTestEnv(dir);
     const profile = { studentId: RIYA.studentId, name: RIYA.name, hoursPerDay: RIYA.dailyStudyHours };
 

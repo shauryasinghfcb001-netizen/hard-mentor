@@ -1,3 +1,4 @@
+import { fictionalSandbox } from "../src/consent/storageGate.ts";
 // Quiz attempts persisted with answers, and the progress view that shows how the next recommendation moved.
 // Offline: rule planner, local CSV in a temp dir, fictional students. fetch must never be called.
 import assert from "node:assert/strict";
@@ -33,7 +34,7 @@ const KABIR: StudentProfile = { studentId: "kabir", name: "Kabir (fictional)", h
 const INTAKE = ["hi", "12th boards", "India", "90% in PCM", "15 Feb 2027", "CBSE"];
 
 function setup() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "hm-prog-"));
+  const root = fictionalSandbox("hm-prog-");
   const records = path.join(root, "study-records.csv");
   fs.copyFileSync("seed/study-records.csv", records);
   fs.appendFileSync(records, "kabir,physics:electrostatics,physics,Electrostatics,0.4,0.8\n");
@@ -134,7 +135,7 @@ test("an open quiz survives a progress request", async () => {
 });
 
 test("buildProgress: a mastered topic stops being recommended; attempts without saved answers still list", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hm-prog-unit-"));
+  const dir = fictionalSandbox("hm-prog-unit-");
   const quizLog = path.join(dir, "quiz-log.csv");
   fs.writeFileSync(
     quizLog,

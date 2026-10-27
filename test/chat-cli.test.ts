@@ -1,3 +1,4 @@
+import { fictionalSandbox } from "../src/consent/storageGate.ts";
 // The chat CLI entry point (scripts/chat.ts runChat): default output unchanged, and the baseline-vs-model
 // comparison shown when HM_PLANNER=model. Offline and mocked: the model is an injected stub, fetch fails the
 // test if called, and the environment passed to the CLI is an explicit object, never process.env.
@@ -31,7 +32,7 @@ async function* from(lines: string[]) {
 }
 
 async function cli(env: NodeJS.ProcessEnv, model?: ChatModel | null) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "hm-cli-"));
+  const root = fictionalSandbox("hm-cli-");
   const out: string[] = [];
   await runChat({ args: [root, "--today", "2026-10-23"], env, lines: from(SCRIPT), log: (s) => out.push(s), model });
   return out.join("\n").split(root).join("<ROOT>") + "\n";

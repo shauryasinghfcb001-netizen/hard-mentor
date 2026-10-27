@@ -8,6 +8,52 @@
 import { pathToFileURL } from "node:url";
 import type { StudyDataSource, TopicQuery } from "../src/data/studyData.ts";
 import { zetarisStudyData } from "../src/data/zetarisStudyData.ts";
+import { diagnosticFetch, failureDiagnostic, safeFailure, type FailureDiagnostic } from './live-run-diagnostics.ts';
+import { assertNoPromptedValue, validateLiveConfiguration } from './live-run-safety.ts';
+
+export interface BoundedQueryReceipt {
+  mode: 'query-only';
+  ok: boolean;
+  modelRequests: 0;
+  requests: number;
+  rowCount?: number;
+  provenance?: { kind: 'zetaris'; positions: number; convention: 'connector-result-order' };
+  error?: string;
+  failure?: FailureDiagnostic;
+}
+
+/** One existing connector read: login then SELECT, no model imports or fallthrough. */
+export async function runBoundedQuery(env: NodeJS.ProcessEnv, fetchImpl: typeof fetch = fetch): Promise<BoundedQueryReceipt> {
+  let requests = 0;
+  let reason: string | undefined;
+  let failure: FailureDiagnostic | undefined;
+  const receipt = { mode: 'query-only' as const, modelRequests: 0 as const };
+  try {
+    validateLiveConfiguration(env, [env.HM_ZETARIS_USER ?? '', env.HM_ZETARIS_PASSWORD ?? '']);
+    const observed = diagnosticFetch(fetchImpl, (r, d) => { reason ??= r; failure ??= d; });
+    const bounded: typeof fetch = async (input, init) => {
+      if (requests >= 2) throw new Error('request_limit');
+      requests++;
+      return observed(input, init);
+    };
+    const result = await zetarisStudyData({ env, fetch: bounded }).topicsFor('riya');
+    return { ...receipt, ok: true, requests, rowCount: result.rows.length,
+      provenance: { kind: 'zetaris', positions: result.rows.length, convention: 'connector-result-order' } };
+  } catch {
+    return { ...receipt, ok: false, requests, error: safeFailure(reason),
+      failure: failure ?? failureDiagnostic(requests ? 'zetaris_query' : 'configuration', requests ? 'invalid_response' : 'configuration_error') };
+  }
+}
+
+export async function boundedQueryMain(env: NodeJS.ProcessEnv, fetchImpl: typeof fetch = fetch, write: (text: string) => void = text => { process.stdout.write(text); }): Promise<number> {
+  const result = await runBoundedQuery(env, fetchImpl);
+  try {
+    const output = JSON.stringify(result) + '\n';
+    assertNoPromptedValue(output, [env.HM_ZETARIS_USER ?? '', env.HM_ZETARIS_PASSWORD ?? '']);
+    write(output);
+    return result.ok ? 0 : 1;
+  } catch { return 13; }
+}
 
 const PREFIX = "Zetaris unavailable";
 
@@ -50,5 +96,8 @@ async function main(): Promise<number> {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  process.exitCode = await main();
+  // A terminal branch: neither outcome can invoke the legacy CLI or full loop.
+  if (process.argv[2] === '--bounded') {
+    process.exitCode = process.argv.length === 3 ? await boundedQueryMain(process.env) : 2;
+  } else process.exitCode = await main();
 }

@@ -1,3 +1,4 @@
+import { assertStudentStorage } from "../src/consent/storageGate.ts";
 // CSV-backed plan change demo (DECISIONS.md D16, D17). Riya's study records
 // come from seed/study-records.csv through the StudyDataSource adapter. A
 // second copy of the CSV with changed fictional marks (as if after a quiz) is
@@ -24,6 +25,7 @@ const MESSAGE = "Plan my study for today.";
 export const MARK_CHANGES: Record<string, number> = { "physics:electrostatics": 0.88, "maths:integrals": 0.25 };
 
 export function writeChangedCsv(seedFile: string, outFile: string): string[] {
+  assertStudentStorage(outFile, RIYA.studentId);
   const lines = fs.readFileSync(seedFile, "utf-8").split("\n");
   const diffs: string[] = [];
   const out = lines.map((line, i) => {

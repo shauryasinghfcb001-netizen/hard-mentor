@@ -1,3 +1,4 @@
+import { assertStudentStorage } from "../consent/storageGate.ts";
 // Quiz attempt store: one JSON line per scored quiz, next to the quiz log.
 // The quiz log keeps the score and the mastery change; this file also keeps the
 // per-question choices (option text from the quiz, never free text), so a
@@ -32,6 +33,7 @@ export function attemptsPathFor(quizLog: string): string {
 }
 
 export function appendAttempt(file: string, attempt: QuizAttempt): void {
+  assertStudentStorage(file, attempt.studentId);
   fs.appendFileSync(file, JSON.stringify(attempt) + "\n");
 }
 

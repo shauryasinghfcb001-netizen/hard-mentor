@@ -66,9 +66,6 @@ export function zetarisStudyData(opts: ZetarisOptions = {}): StudyDataSource {
       throw unavailable(`${what} request failed (${target})`);
     }
     if (!res.ok) {
-      if (what === "login" && res.status === 404) {
-        throw unavailable(`login returned HTTP 404 (can indicate bad credentials on this platform) (${target})`);
-      }
       throw unavailable(`${what} returned HTTP ${res.status} (${target})`);
     }
     try {

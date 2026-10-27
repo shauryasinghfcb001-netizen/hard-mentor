@@ -1,0 +1,18 @@
+{
+  "repository": "https://github.com/Meterless/Meterless",
+  "commit": "1742dec56a66e58eef9dda2d2b865823758ca8cd",
+  "files": {
+    "README.md": {
+      "upstreamPath": "engines/hmem/conformance/README.md",
+      "sha256": "cf44fd4d3c9a8af0c46157bb015dead8d4ccb2d000c2358e7da1e4cecfbc4c39"
+    },
+    "runner.ts": {
+      "upstreamPath": "engines/hmem/conformance/runner.ts",
+      "sha256": "d6724860761c4846a0bce3080d25115bcb0ba1d9d0d2e933438f5683a7a9b7c5"
+    },
+    "vectors/vectors.json": {
+      "upstreamPath": "engines/hmem/conformance/vectors/vectors.json",
+      "sha256": "10afb5a07233466576ba6feb0d88408488909ba2721ee9157fdb932132917029"
+    }
+  }
+}

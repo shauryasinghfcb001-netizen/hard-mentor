@@ -1,3 +1,4 @@
+import { storageGeneration, assertStudentStorage } from "../consent/storageGate.ts";
 // One conversation per student, around the graph. The session keeps what must
 // survive between messages: the exam intake answers, the resolved exam
 // context, the open quiz and the last plan (to explain what changed). It is a
@@ -16,9 +17,9 @@ import { studentDir, type StudentMemory } from "../memory/studentMemory.ts";
 import type { ActiveQuiz } from "../quiz/quizTurn.ts";
 import type { Corpus, Retriever } from "../rag/ncert.ts";
 import { buildProgress, renderProgress } from "../quiz/progress.ts";
-import { classifyIntent, runMentor, type MentorState, type StudentContext } from "./graph.ts";
+import { asksPlanWhy, classifyIntent, runMentor, type MentorState, type StudentContext } from "./graph.ts";
 import type { Planner } from "./planner.ts";
-import { buildWhyCard, type WhyCard } from "./whyCard.ts";
+import { buildWhyCard, renderWhyCard, type WhyCard } from "./whyCard.ts";
 
 export interface StudentProfile {
   studentId: string;
@@ -36,10 +37,12 @@ export interface Session {
   activeQuiz: ActiveQuiz | null;
   /** the student turned memory off: nothing is recalled or written, stored memories are kept */
   memoryOff?: boolean;
+  lastWhy?: WhyCard;
   lastPlan: { at: string; top: string; topics: Record<string, { name: string; mastery: number; priority: number }> } | null;
 }
 
 export interface ConversationEnv {
+  maxPlanDrafts?: number;
   planner: Planner;
   retriever: Retriever | null;
   research: ResearchSource;
@@ -63,20 +66,30 @@ export interface TurnResult {
 /** Used for urgency only when the student gives no exam date; the reply says so. */
 export const ASSUMED_DAYS_TO_EXAM = 120;
 
+// An interrupted quiz closes in this running conversation without a distress
+// write. The next ordinary turn persists the closure through saveSession.
+// Like all volatile state, this overlay does not survive a process restart.
+const transientSessions = new WeakMap<ConversationEnv, Map<string, { session: Session; generation: number }>>();
+
 function sessionFile(env: ConversationEnv, studentId: string): string {
   return `${studentDir(env.sessionsDir, studentId)}.json`;
 }
 
 export function loadSession(env: ConversationEnv, studentId: string): Session | null {
+  const transient = transientSessions.get(env)?.get(studentId);
+  if (transient && transient.generation === storageGeneration(sessionFile(env, studentId), studentId)) return structuredClone(transient.session);
+  transientSessions.get(env)?.delete(studentId);
   const f = sessionFile(env, studentId);
   return fs.existsSync(f) ? (JSON.parse(fs.readFileSync(f, "utf-8")) as Session) : null;
 }
 
 function saveSession(env: ConversationEnv, s: Session): void {
+  assertStudentStorage(sessionFile(env, s.studentId), s.studentId);
   const f = sessionFile(env, s.studentId);
   fs.mkdirSync(path.dirname(f), { recursive: true });
   fs.writeFileSync(`${f}.tmp`, JSON.stringify(s, null, 2));
   fs.renameSync(`${f}.tmp`, f);
+  transientSessions.get(env)?.delete(s.studentId);
 }
 
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
@@ -340,12 +353,32 @@ function withAttemptLog(q: TopicQuery, quizLog: string, studentId: string): Topi
   return { ...q, rows, source: `Zetaris baseline + local attempt log (${q.source})` };
 }
 
-export async function converse(env: ConversationEnv, profile: StudentProfile, message: string): Promise<TurnResult> {
+export async function converse(env: ConversationEnv, profile: StudentProfile, message: string, options?: { memory?: boolean }): Promise<TurnResult> {
+  // The override must precede configuration checks and memory initialization:
+  // opening H-MEM can itself create directories, even without adding a record.
+  if (detectDistress(message).distress) {
+    const empty: Session = { studentId: profile.studentId, stage: "intake", intake: { step: "exam", goal: {} }, exam: null, activeQuiz: null, lastPlan: null };
+    let s = empty;
+    try { s = loadSession(env, profile.studentId) ?? empty; } catch { /* broken storage must not block support */ }
+    const state = await runMentor({ planner: env.planner, memory: null }, {
+      ...profile, daysToExam: ASSUMED_DAYS_TO_EXAM, topics: [],
+    }, message, { activeQuiz: s.activeQuiz });
+    if (s.activeQuiz) {
+      s.activeQuiz = null;
+      let sessions = transientSessions.get(env);
+      if (!sessions) transientSessions.set(env, sessions = new Map());
+      sessions.set(profile.studentId, { session: structuredClone(s), generation: storageGeneration(sessionFile(env, profile.studentId), profile.studentId) });
+    }
+    return { reply: state.reply, handledBy: "graph", state, why: buildWhyCard(state), session: s };
+  }
+  assertStudentStorage(sessionFile(env, profile.studentId), profile.studentId);
+  assertStudentStorage(env.records, profile.studentId);
+  assertStudentStorage(env.quizLog, profile.studentId);
   const mode = studySource();
   // One Zetaris source per turn; it reads no env or network until topicsFor is called.
   const zetaris: StudyDataSource | null = mode === "zetaris" ? zetarisStudyData() : null;
   try {
-    return await converseTurn(env, profile, message, zetaris);
+    return await converseTurn(env, profile, message, zetaris, options);
   } catch (e) {
     // Fail closed: a Zetaris read failure ends the turn. Never answer from the CSV.
     if (zetaris && e instanceof Error && e.message.startsWith("Zetaris unavailable")) {
@@ -356,14 +389,16 @@ export async function converse(env: ConversationEnv, profile: StudentProfile, me
   }
 }
 
-async function converseTurn(env: ConversationEnv, profile: StudentProfile, message: string, zetaris: StudyDataSource | null): Promise<TurnResult> {
+async function converseTurn(env: ConversationEnv, profile: StudentProfile, message: string, zetaris: StudyDataSource | null, options?: { memory?: boolean }): Promise<TurnResult> {
   let s = loadSession(env, profile.studentId);
   const isNew = !s;
   s ??= { studentId: profile.studentId, stage: "intake", intake: { step: "exam", goal: {} }, exam: null, activeQuiz: null, lastPlan: null };
-  const stored = await env.memoryFor(profile.studentId);
+  const stored = options?.memory === false ? null : await env.memoryFor(profile.studentId);
+  assertStudentStorage(sessionFile(env, profile.studentId), profile.studentId);
   // Memory off: nothing is recalled or written. Stored memories stay and can still be listed or forgotten.
   const memory = s.memoryOff ? null : stored;
   const deps = {
+    maxDrafts: env.maxPlanDrafts,
     planner: env.planner,
     memory,
     retriever: env.retriever,
@@ -384,12 +419,6 @@ async function converseTurn(env: ConversationEnv, profile: StudentProfile, messa
     return { ...base, topics: q.rows, provenance: { source: q.source, sql: q.sql } };
   };
 
-  // Distress first, in every stage. The graph sends the override reply; intake does not advance.
-  if (s.stage === "intake" && detectDistress(message).distress) {
-    const state = await runMentor(deps, { ...(await student(false)), topics: [] }, message);
-    saveSession(env, s);
-    return { reply: state.reply, handledBy: "graph", state, why: buildWhyCard(state), session: s };
-  }
   const control = !isNew && !detectDistress(message).distress ? detectMemoryControl(message) : null;
   if (control) {
     if (control !== "status") s.memoryOff = control === "off";
@@ -410,6 +439,11 @@ async function converseTurn(env: ConversationEnv, profile: StudentProfile, messa
     return { reply, handledBy: "intake", state: null, why: null, session: s };
   }
 
+  if (!s.activeQuiz && asksPlanWhy(message)) {
+    const why = s.lastWhy ?? null;
+    return { reply: why ? renderWhyCard(why) : "There is no previous plan to explain. Ask me to plan your study first.", handledBy: "graph", state: null, why, session: s };
+  }
+
   const correction = detectCorrection(message);
   if (correction && !detectDistress(message).distress) {
     // Plan numbers before the change, from the session's last plan or a fresh ranking of the unchanged records.
@@ -425,6 +459,7 @@ async function converseTurn(env: ConversationEnv, profile: StudentProfile, messa
     const planned = await runMentor(deps, await student(), "Plan my study for today.", { activeQuiz: null });
     const after = daysFor(s, env.now());
     const explain = correction.field === "date" ? dateChange(s, before, planned, after) : null;
+    if (planned.draft) s.lastWhy = buildWhyCard(planned);
     if (planned.draft) s.lastPlan = { at: env.now(), top: planned.draft.blocks[0]?.topicId ?? "", topics: Object.fromEntries(planned.ranked.map((t) => [t.topicId, { name: t.name, mastery: t.mastery, priority: t.priority }])) };
     saveSession(env, s);
     return { reply: [applied.note, explain, planned.reply].filter(Boolean).join("\n"), handledBy: "graph", state: planned, why: buildWhyCard(planned), session: s };
@@ -442,6 +477,7 @@ async function converseTurn(env: ConversationEnv, profile: StudentProfile, messa
   s.activeQuiz = state.activeQuiz ?? null;
   let reply = state.reply;
   if (state.draft && (state.outcome === "sent" || state.outcome === "fallback")) {
+    s.lastWhy = buildWhyCard(state);
     const change = planChange(s, state);
     if (change) reply = `${reply}\n${change}`;
     s.lastPlan = {

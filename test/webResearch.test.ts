@@ -3,7 +3,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { test } from "node:test";
 import { researchExam, type StudentGoal } from "../src/context/examContext.ts";
-import { baseDomain, boundedFetcher, htmlToText, isPrivateAddress, parseDates, webResearch } from "../src/context/webResearch.ts";
+import { baseDomain, boundedFetcher, htmlToText, isPrivateAddress, looksLikeExamName, parseDates, webResearch } from "../src/context/webResearch.ts";
 
 // These tests drive the code with a scripted fetch. The scripted pages are test inputs for
 // the parser and the safety bounds; they are not research results and are never shown to a student.
@@ -13,7 +13,7 @@ function fakeFetch(routes: Record<string, Route>, seen: string[] = []) {
   const f = (async (input: URL | string) => {
     const u = String(input);
     seen.push(u);
-    const key = Object.keys(routes).find((k) => u.startsWith(k));
+    const key = Object.keys(routes).sort((a, b) => b.length - a.length).find((k) => u.startsWith(k));
     const r = key ? routes[key] : { status: 404, body: "" };
     return new Response(r.body, { status: r.status ?? 200, headers: { "content-type": r.type ?? "text/html", ...(r.headers ?? {}) } });
   }) as unknown as typeof fetch;
@@ -151,13 +151,15 @@ test("403 or a challenge page stops research on that site and says so; robots.tx
   if (challenge.step.status === "resolved") assert.ok(challenge.step.context.research.limits!.some((l) => /challenge/.test(l)));
 });
 
-test("private hosts, http, and redirects off the official domain are refused", async () => {
+test("private hosts and off-domain redirects are refused; HTTP nominations use HTTPS only", async () => {
   const priv = await run({ ...wdRoutes([{ ...E1, site: "https://private.example.gov.in" }]) });
   if (priv.step.status === "resolved") assert.ok(priv.step.context.research.limits!.some((l) => /private address/.test(l)));
   assert.ok(!priv.seen.some((u) => u.startsWith("https://private.example.gov.in")));
   const http = await run({ ...wdRoutes([{ ...E1, site: "http://exam.example.gov.in" }]) });
-  if (http.step.status === "resolved") assert.ok(http.step.context.research.limits!.some((l) => /not https/.test(l)));
+  if (http.step.status === "resolved") assert.ok(http.step.context.research.limits!.some((l) => /only its same-host HTTPS/.test(l)));
+  assert.ok(!http.seen.some(u => u.startsWith("http:")));
   const off = await run({ ...wdRoutes([E1]), [`${SITE}/`]: { status: 302, body: "", headers: { location: "https://other.example.com/x" } }, "https://other.example.com": { body: "<title>Test Entrance</title>Test Entrance 2027 will be held on 24 January 2027." } });
+  assert.ok(!off.seen.some(u => u.startsWith("https://other.example.com")), "redirect target is never contacted");
   if (off.step.status === "resolved") {
     assert.ok(!off.step.context.facts.some((f) => f.key === "exam_date"));
     assert.ok(off.step.context.research.limits!.some((l) => /off the official domain/.test(l)));
@@ -261,7 +263,7 @@ function listenLocal(): Promise<{ server: http.Server; port: number; hits: strin
   });
 }
 
-test("dns rebinding: hostname that later resolves private is pinned to the first public IP and never hits the loopback stub", async () => {
+test("dns rebinding: hostname that later resolves private is pinned to the first public IP and never hits the loopback stub", { skip: process.env.HM_TEST_NO_NETWORK === "1" ? "owner requested no network calls" : false }, async () => {
   const { server, port, hits } = await listenLocal();
   try {
     let n = 0;
@@ -296,7 +298,7 @@ test("dns rebinding: hostname that later resolves private is pinned to the first
   }
 });
 
-test("redirect to a private address is refused and the loopback stub is not fetched", async () => {
+test("redirect to a private address is refused and the loopback stub is not fetched", { skip: process.env.HM_TEST_NO_NETWORK === "1" ? "owner requested no network calls" : false }, async () => {
   const { server, port, hits } = await listenLocal();
   try {
     const lookup = async (h: string) => (h.startsWith("private") || h === "127.0.0.1" ? ["10.0.0.5"] : ["93.184.216.34"]);
@@ -358,4 +360,299 @@ test("gate: flag-off path still does no lookup and no pinned fetch", async () =>
   assert.equal(r.reason, "Live research is disabled");
   assert.equal(looked, 0);
   assert.equal(pinned, 0);
+});
+
+test("looksLikeExamName: grade markers allowed, invalid shapes and non-grade numbers rejected", () => {
+  // Accept: "CBSE Class 12", "CBSE Class 10", and one "Grade 9" style form
+  assert.ok(looksLikeExamName("CBSE Class 12"));
+  assert.ok(looksLikeExamName("CBSE Class 10"));
+  assert.ok(looksLikeExamName("CBSE Grade 9"));
+
+  // Reject: marks/age shapes, roll-number-like, phone-like digit runs, "12 Class", "Class 0", "Class 13"
+  assert.ok(!looksLikeExamName("scored 85 marks"));
+  assert.ok(!looksLikeExamName("CBSE 123456"));
+  assert.ok(!looksLikeExamName("9876543210"));
+  assert.ok(!looksLikeExamName("12 Class"));
+  assert.ok(!looksLikeExamName("Class 0"));
+  assert.ok(!looksLikeExamName("Class 13"));
+
+  // Reject narrative/PII forms with valid grade marker but other numbers
+  assert.ok(!looksLikeExamName("CBSE Class 12 roll 45"));
+  assert.ok(!looksLikeExamName("CBSE Class 12 marks 85"));
+
+  // Prove existing year behavior is unchanged: year stripped before validation per policy
+  const yearQuery = (s: string) => s.replace(/\b20\d\d\b/g, "").replace(/\s+/g, " ").trim();
+  assert.ok(looksLikeExamName(yearQuery("CBSE Class 12 2027")));
+  assert.ok(looksLikeExamName(yearQuery("NEET 2027")));
+  assert.ok(!looksLikeExamName(yearQuery("I'm Riya Sharma roll 4455 scored 610 preparing NEET 2027")));
+});
+
+
+test("grade-label privacy: narrative inputs stop before DNS or outbound requests", async () => {
+  for (const exam of ["I am Class 12", "My Class 12", "Riya Class 12", "Class 12 student", "CBSE Class 12 marks", "Grade 10 is my class", "CBSE Class 12 roll 45", "Class 12 Class 10", "Preparing for NEET", "Taking JEE Main", "Riya lives in Delhi"]) {
+    let lookups = 0;
+    let requests = 0;
+    const src = webResearch({ enabled: true, lookup: async () => { lookups++; return ["93.184.216.34"]; },
+      fetchImpl: (async () => { requests++; throw new Error("must not send"); }) as typeof fetch });
+    assert.deepEqual(await src.find({ ...GOAL, exam }), [], exam);
+    assert.equal(lookups, 0, exam);
+    assert.equal(requests, 0, exam);
+  }
+  for (const exam of ["Class 12", "Grade 10", "CBSE Class 12", "CBSE Grade 9", "CBSE Standard 11", "CBSE Std 10 Board Exam"]) {
+    assert.equal(looksLikeExamName(exam), true, exam);
+  }
+});
+
+test("grade discovery searches the authority once and does not borrow another grade's date", async () => {
+  const { step, seen } = await run({
+    ...wdRoutes([{ id: "Q1", label: "Synthetic Board", aliases: ["SYN"], site: SITE }]),
+    [`${SITE}/`]: { body: "<title>Synthetic Board</title><p>SYN Class 10 will be held on 24 January 2027.</p>" },
+  }, { ...GOAL, exam: "SYN Class 12 2027", statedExamDate: undefined });
+  const searches = seen.filter(u => u.includes("wbsearchentities"));
+  assert.equal(searches.length, 1);
+  assert.equal(new URL(searches[0]).searchParams.get("search"), "SYN");
+  assert.equal(step.status, "resolved");
+  if (step.status !== "resolved") return;
+  assert.equal(step.context.examDate, null);
+  assert.ok(step.context.facts.some(f => f.key === "official_site_confirmed"));
+});
+
+test("grade discovery rejects unrelated authority hits and grade-only inputs", async () => {
+  const unrelated = await run(wdRoutes([E1]), { ...GOAL, exam: "SYN Class 12" });
+  assert.equal(unrelated.step.status, "not_found");
+  assert.ok(unrelated.seen.every(u => u.startsWith(WD)));
+  const bare = await run({}, { ...GOAL, exam: "Class 12" });
+  assert.equal(bare.step.status, "not_found");
+  assert.equal(bare.seen.length, 0);
+});
+
+test("HTTP discovery pointer nominates the same HTTPS host, without HTTP or fallback", async () => {
+  const { step, seen } = await run({
+    ...wdRoutes([{ ...E1, site: SITE.replace("https:", "http:") }]),
+    [`${SITE}/`]: { body: "<title>Test Entrance</title><p>Test Entrance is the synthetic entrance examination.</p>" },
+  });
+  assert.equal(step.status, "resolved");
+  if (step.status !== "resolved") return;
+  assert.ok(seen.includes(`${SITE}/`));
+  assert.ok(seen.every(u => u.startsWith("https:")));
+  const fact = step.context.facts.find(f => f.key === "exam_named_on_official_site");
+  assert.equal(fact?.status, "verified-official");
+  assert.equal(fact?.source.url, `${SITE}/`);
+  assert.match(fact!.source.note, /quoted: "Test Entrance is the synthetic entrance examination/);
+  const failed = await run({
+    ...wdRoutes([{ ...E1, site: SITE.replace("https:", "http:") }]),
+    [`${SITE}/robots.txt`]: { status: 404, body: "" },
+    [`${SITE}/`]: { status: 503, body: "temporarily unavailable" },
+  });
+  assert.ok(failed.seen.every(u => u.startsWith("https:")));
+  assert.equal(failed.seen.filter(u => u === `${SITE}/`).length, 1);
+  if (failed.step.status === "resolved") assert.ok(!failed.step.context.facts.some(f => f.status === "verified-official"));
+  // The transport itself continues to refuse HTTP, including downgrades.
+  const direct = await boundedFetcher({ enabled: true, lookup: publicLookup }).raw("http://exam.example.gov.in/", "text/html");
+  assert.equal(direct.ok, false);
+  if (!direct.ok) assert.match(direct.reason, /not https/);
+});
+
+test("grade research preserves the requested exam and separates authority identity from exam evidence", async () => {
+  const board = { id: "Q1", label: "Synthetic Board", aliases: ["SYN"], site: SITE };
+  const goal = { ...GOAL, exam: "SYN Class 12 2027", statedExamDate: undefined };
+  const authorityOnly = await run({ ...wdRoutes([board]), [`${SITE}/`]: { body: "<title>Synthetic Board</title><p>Synthetic Board conducts school examinations.</p>" } }, goal);
+  assert.equal(authorityOnly.step.status, "resolved");
+  if (authorityOnly.step.status !== "resolved") return;
+  assert.equal(authorityOnly.step.context.exam.name, "SYN Class 12");
+  assert.ok(!authorityOnly.step.context.facts.some(f => f.key === "exam_named_on_official_site"));
+  assert.match(authorityOnly.step.context.research.limits!.join(";"), /authority identity confirmed only/);
+  const exam = await run({ ...wdRoutes([board]), [`${SITE}/`]: { body: "<title>Synthetic Board</title><p>SYN Class 12 examinations assess the senior secondary curriculum.</p>" } }, goal);
+  if (exam.step.status !== "resolved") return assert.fail("expected resolved");
+  assert.ok(exam.step.context.facts.some(f => f.key === "exam_named_on_official_site" && f.status === "verified-official"));
+  assert.equal(exam.step.context.examDate, null);
+});
+
+test("unrelated fuzzy search results cannot resolve an unavailable exam", async () => {
+  const { step, seen } = await run(wdRoutes([E1]), { ...GOAL, exam: "Moonstone Imaginary Assessment" });
+  assert.equal(step.status, "not_found");
+  assert.ok(seen.every(u => u.startsWith(WD)));
+});
+
+test("robots failures fail closed; an absent robots file alone permits fetching", async () => {
+  for (const status of [401, 403, 429, 500, 503]) {
+    const { seen } = await run({ ...wdRoutes([E1]), [`${SITE}/robots.txt`]: { status, body: "unavailable" }, [`${SITE}/`]: { body: "<p>Test Entrance information.</p>" } });
+    assert.ok(!seen.includes(`${SITE}/`), String(status));
+  }
+  const seen: string[] = [];
+  const { f } = fakeFetch(wdRoutes([E1]), seen);
+  const src = webResearch({ enabled: true, lookup: publicLookup, pauseMs: 0, fetchImpl: (async (input: URL | string) => {
+    if (String(input).endsWith("/robots.txt")) throw new Error("synthetic timeout");
+    return f(input);
+  }) as typeof fetch });
+  await researchExam(src, GOAL, { ranAt: "2026-10-26T00:00:00Z" });
+  assert.ok(!seen.includes(`${SITE}/`));
+});
+
+test("robots and page redirects never contact an unrelated host or downgrade to HTTP", async () => {
+  for (const path of ["/robots.txt", "/"]) {
+    for (const target of ["https://unrelated.example.gov.in/x", "http://exam.example.gov.in/x"]) {
+      const { seen } = await run({ ...wdRoutes([E1]), [`${SITE}${path}`]: { status: 302, body: "", headers: { location: target } } });
+      assert.ok(!seen.includes(target), `${path} -> ${target}`);
+    }
+  }
+});
+
+test("invalid calendar dates are never promoted to exam dates", () => {
+  assert.deepEqual(parseDates("31 February 2027 and February 29, 2027 and 31 April 2027"), []);
+  assert.deepEqual(parseDates("29 February 2028"), ["2028-02-29"]);
+});
+
+test("same-host redirects recheck robots permission for the target path", async () => {
+  const { seen } = await run({
+    ...wdRoutes([E1]),
+    [`${SITE}/robots.txt`]: { type: "text/plain", body: "User-agent: *\nDisallow: /private/" },
+    [`${SITE}/`]: { status: 302, body: "", headers: { location: "/private/schedule" } },
+  });
+  assert.ok(!seen.includes(`${SITE}/private/schedule`));
+});
+
+test("conducting-body portal follows bounded exam links even when the landing text does not name the exam", async () => {
+  const routes = {
+    ...wdRoutes([{ id: "Q123", label: "Test Entrance", site: "https://exams.example.gov.in/" }]),
+    "https://exams.example.gov.in/robots.txt": { type: "text/plain", body: "User-agent: *\nAllow: /" },
+    "https://exams.example.gov.in/exam-syllabus": { body: "<title>Test Entrance</title><p>Test Entrance syllabus includes mathematics and physics.</p><p>Test Entrance examination pattern uses multiple-choice questions.</p>" },
+    "https://exams.example.gov.in/": { body: '<title>Examination Services</title><a href="/exam-syllabus">Syllabus</a>' },
+  };
+  const { step, seen } = await run(routes);
+  assert.ok(seen.includes("https://exams.example.gov.in/exam-syllabus"));
+  assert.equal(step.status, "resolved");
+  if (step.status !== "resolved") return;
+  for (const key of ["exam_named_on_official_site", "syllabus_excerpt", "exam_format_excerpt"]) {
+    const fact: import("../src/context/examContext.ts").CheckedFact = step.context.facts.find(f => f.key === key)!;
+    assert.equal(fact.status, "verified-official");
+    assert.equal(fact.source.url, "https://exams.example.gov.in/exam-syllabus");
+    assert.match(fact.source.note, /quoted:/);
+  }
+  assert.equal(step.context.examDate?.origin, "student-stated");
+});
+
+test("portal link discovery preserves robots restrictions and never manufactures exam facts", async () => {
+  const routes = {
+    ...wdRoutes([{ id: "Q123", label: "Test Entrance", site: "https://portal.example.gov.in/" }]),
+    "https://portal.example.gov.in/robots.txt": { type: "text/plain", body: "User-agent: *\nDisallow: /exam-syllabus" },
+    "https://portal.example.gov.in/": { body: '<title>Exam service</title><a href="/exam-syllabus">Syllabus</a>' },
+  };
+  const { step, seen } = await run(routes);
+  assert.ok(!seen.includes("https://portal.example.gov.in/exam-syllabus"));
+  assert.equal(step.status, "resolved");
+  if (step.status === "resolved") assert.equal(step.context.facts.filter(f => f.status === "verified-official").length, 0);
+});
+
+test("discovery can nominate an examination operator website without an organizer claim", async () => {
+  const routes = wdRoutes([{ id: "Q123", label: "Test Entrance", org: "operator" }]);
+  const entityKey = `${WD}?format=json&action=wbgetentities&ids=Q`;
+  const payload = JSON.parse(routes[entityKey].body);
+  payload.entities.Q123.claims.P137 = payload.entities.Q123.claims.P664;
+  delete payload.entities.Q123.claims.P664;
+  routes[entityKey].body = JSON.stringify(payload);
+  routes["https://agency.example.gov.in/robots.txt"] = { type: "text/plain", body: "User-agent: *\nAllow: /" };
+  routes["https://agency.example.gov.in/"] = { body: "<title>Test Entrance</title><p>Test Entrance syllabus includes mathematics and physics.</p>" };
+  const { step } = await run(routes);
+  assert.equal(step.status, "resolved");
+  if (step.status === "resolved") {
+    assert.equal(step.context.exam.body, "Test Testing Agency");
+    assert.equal(step.context.facts.find(f => f.key === "conducting_body")?.status, "unverified");
+    assert.equal(step.context.facts.find(f => f.key === "syllabus_excerpt")?.status, "verified-official");
+  }
+});
+
+// Synthetic graph fixtures: no facts about a real exam or body.
+function editionRoutes(options: { relation?: string; stale?: boolean; authorities?: string[]; text?: string; overflow?: boolean; status?: number } = {}) {
+  const routes = wdRoutes([{ id: "Q123", label: "Test Entrance" }]);
+  const authorities = options.authorities ?? ["Q900"];
+  const claim = (value: unknown) => ({ mainsnak: { datavalue: { value } } });
+  routes[`${WD}?format=json&action=query`] = { type: "application/json", body: JSON.stringify({ query: { searchinfo: { totalhits: options.overflow ? 9 : 1 }, search: [{ title: "Q777" }] } }) };
+  routes[`${WD}?format=json&action=wbgetentities&ids=Q777`] = { type: "application/json", body: JSON.stringify({ entities: { Q777: { claims: {
+    [options.relation ?? "P179"]: [{ ...claim({ id: "Q123" }), ...(options.stale ? { qualifiers: { P582: [] } } : {}) }],
+    P664: authorities.map(id => claim({ id })),
+  } } } }) };
+  // Insert this before the prefix fixture for Q900 so a batch has both bodies.
+  const orgKey = `${WD}?format=json&action=wbgetentities&ids=Q900`;
+  routes[orgKey].body = JSON.stringify({ entities: Object.fromEntries(authorities.map(id => [id, { labels: { en: { value: `Body ${id}` } }, claims: { P856: [claim(`https://${id.toLowerCase()}.example.gov.in`)] } }])) });
+  routes["https://q900.example.gov.in/robots.txt"] = { type: "text/plain", body: "User-agent: *\nAllow: /" };
+  routes["https://q900.example.gov.in/"] = { status: options.status, body: options.text ?? "<p>Body Q900 conducts Test Entrance.</p><p>Test Entrance syllabus includes mathematics.</p>" };
+  return routes;
+}
+
+test("bounded edition authority chain nominates a site and requires official responsibility evidence", async () => {
+  for (const relation of ["P179", "P31"]) {
+    const { step, seen } = await run(editionRoutes({ relation }));
+    assert.equal(step.status, "resolved");
+    if (step.status !== "resolved") continue;
+    const body = step.context.facts.find(f => f.key === "conducting_body" && f.status === "verified-official");
+    assert.equal(body?.source.url, "https://q900.example.gov.in/");
+    assert.ok(body!.source.note.includes(`Q123 <- ${relation} - Q777 - P664 -> Q900 - P856`));
+    assert.equal(step.context.facts.find(f => f.key === "syllabus_excerpt")?.status, "verified-official");
+    assert.equal(seen.filter(u => u.includes("action=query")).length, 1);
+    assert.ok(seen.length <= 8);
+    assert.ok(!seen.some(u => /top.rank|2027|2027-01-24/.test(decodeURIComponent(u))));
+  }
+});
+
+test("edition candidates mentioning the exam without responsibility verify nothing", async () => {
+  for (const text of ["Body Q900 lists Test Entrance syllabus.", "Body Q900 does not conduct Test Entrance.", "Other Body conducts Test Entrance.", "Body Q900 conducts other examinations and lists Test Entrance syllabus."]) {
+    const { step } = await run(editionRoutes({ text: `<p>${text}</p>` }));
+    assert.equal(step.status, "resolved");
+    if (step.status === "resolved") {
+      assert.equal(step.context.facts.filter(f => f.status === "verified-official").length, 0);
+      assert.match(step.context.research.limits!.join(";"), /responsibility/);
+    }
+  }
+});
+
+test("unrelated, ended, overflowing and missing edition relationships stay unknown", async () => {
+  for (const opts of [{ relation: "P921" }, { stale: true }, { overflow: true }]) {
+    const { step, seen } = await run(editionRoutes(opts));
+    assert.equal(step.status, "not_found");
+    assert.ok(!seen.some(u => u.startsWith("https://q900")));
+    assert.equal(seen.filter(u => u.includes("action=query")).length, 1);
+  }
+  const negative = await run({}, { exam: "Moonstone Imaginary Assessment", country: "India", goal: "private goal" });
+  assert.equal(negative.step.status, "not_found");
+  assert.equal(negative.seen.length, 1);
+});
+
+test("several edition authorities remain ambiguous and fetch no official pages", async () => {
+  const { step, seen } = await run(editionRoutes({ authorities: ["Q900", "Q901"] }));
+  assert.equal(step.status, "ambiguous");
+  if (step.status === "ambiguous") assert.equal(step.options.length, 2);
+  assert.ok(!seen.some(u => /example.gov.in/.test(u)));
+});
+
+test("fallback official restrictions stop without facts or repeated attempts", async () => {
+  const { step, seen } = await run(editionRoutes({ status: 403 }));
+  assert.equal(step.status, "resolved");
+  if (step.status === "resolved") assert.equal(step.context.facts.filter(f => f.status === "verified-official").length, 0);
+  assert.equal(seen.filter(u => u === "https://q900.example.gov.in/").length, 1);
+});
+
+
+test("direct organizer and operator disagreement is also ambiguous", async () => {
+  const routes = wdRoutes([{ id: "Q123", label: "Test Entrance", org: "Q900" }]);
+  const key = `${WD}?format=json&action=wbgetentities&ids=Q`;
+  const payload = JSON.parse(routes[key].body);
+  payload.entities.Q123.claims.P137 = [{ mainsnak: { datavalue: { value: { id: "Q901" } } } }];
+  routes[key].body = JSON.stringify(payload);
+  const orgKey = `${WD}?format=json&action=wbgetentities&ids=Q900`;
+  const orgs = JSON.parse(routes[orgKey].body);
+  // The second plausible body has no website. That cannot erase ambiguity.
+  orgs.entities.Q901 = { labels: { en: { value: "Other Body" } }, claims: {} };
+  routes[orgKey].body = JSON.stringify(orgs);
+  const { step, seen } = await run(routes);
+  assert.equal(step.status, "ambiguous");
+  assert.ok(!seen.some(u => u.startsWith("https://agency")));
+});
+
+test("fallback discovery API failure stops and never retries or chooses a body", async () => {
+  const routes = editionRoutes();
+  routes[`${WD}?format=json&action=query`] = { status: 403, body: "" };
+  const { step, seen } = await run(routes);
+  assert.equal(step.status, "not_found");
+  assert.equal(seen.length, 3);
 });

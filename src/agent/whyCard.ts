@@ -73,6 +73,6 @@ export function renderWhyCard(card: WhyCard): string {
   if (card.comparison) lines.push(...comparisonLines(card.comparison, card.outcome));
   lines.push("Loop:", ...card.loop.map((l) => `  ${l}`));
   if (card.source !== undefined) lines.push(`Source: ${card.source}`);
-  lines.push(`SQL: ${card.sql ?? "(not available: Zetaris federation not wired yet)"}`);
+  lines.push(`SQL: ${card.sql ?? "(not available for this turn; see source provenance)"}`);
   return lines.join("\n");
 }
