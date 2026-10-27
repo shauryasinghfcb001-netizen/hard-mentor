@@ -1,0 +1,40 @@
+{
+  "description": "Allowlisted summary of inspected historical receipts; no fresh live execution",
+  "receipts": [
+    {
+      "sourceBasename": "live-20261027-194418-87845.json",
+      "historicalNotRerun": true,
+      "modelRequests": 1,
+      "loop": "fail",
+      "ok": false,
+      "checks": {
+        "intake": true,
+        "zetarisRead": true,
+        "initialModelValidated": false,
+        "initialGraphChecked": true
+      },
+      "failure": {
+        "stage": "proposal_validation",
+        "category": "proposal_rejected"
+      }
+    },
+    {
+      "sourceBasename": "live-20261027-195356-88384.json",
+      "historicalNotRerun": true,
+      "modelRequests": 1,
+      "loop": "fail",
+      "ok": false,
+      "checks": {
+        "intake": true,
+        "zetarisRead": true,
+        "initialModelValidated": false,
+        "initialGraphChecked": false
+      },
+      "failure": {
+        "stage": "model_request",
+        "category": "transport_error",
+        "transportCause": "timeout"
+      }
+    }
+  ]
+}

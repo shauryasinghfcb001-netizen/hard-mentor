@@ -1,0 +1,203 @@
+{
+  "project": "Personalised Mentor",
+  "repositoryIdentifier": "hard-mentor",
+  "head": "537d80cb4c7e0ae92b30c03e62295b66436ed453",
+  "branch": "fix/web-research-dns-pin",
+  "worktree": "dirty: pre-existing modified and untracked tests/docs; packaging edits uncommitted",
+  "node": "26.8.1",
+  "npm": "11.19.0",
+  "scope": "existing checkout offline execution unless clean HEAD archive is explicitly stated",
+  "studyClock": "2026-10-23 (simulated, not execution date)",
+  "runs": [
+    {
+      "name": "typecheck",
+      "command": [
+        "npm",
+        "run",
+        "typecheck"
+      ],
+      "exit": 0,
+      "at": "2026-10-27T18:15:48.577336+00:00"
+    },
+    {
+      "name": "hmem-conformance",
+      "command": [
+        "npm",
+        "run",
+        "test:hmem-conformance"
+      ],
+      "exit": 0,
+      "at": "2026-10-27T18:15:48.868715+00:00"
+    },
+    {
+      "name": "legacy-journey",
+      "command": [
+        "node",
+        "--import",
+        "tsx",
+        "scripts/student-journey.ts",
+        "/tmp/personalised-mentor-packaging/legacy-data"
+      ],
+      "exit": 1,
+      "at": "2026-10-27T18:15:49.321604+00:00"
+    },
+    {
+      "name": "journey",
+      "command": [
+        "node",
+        "--import",
+        "tsx",
+        "--input-type=module",
+        "-e",
+        "import { fictionalSandbox } from './src/consent/storageGate.ts'; process.argv[2] = fictionalSandbox('pm-journey-'); await import('./scripts/student-journey.ts');"
+      ],
+      "exit": 0,
+      "at": "2026-10-27T18:15:49.680707+00:00"
+    },
+    {
+      "name": "chat",
+      "command": [
+        "node",
+        "--import",
+        "tsx",
+        "scripts/chat.ts",
+        "--fictional-scratch",
+        "--today",
+        "2026-10-23"
+      ],
+      "exit": 0,
+      "at": "2026-10-27T18:15:50.045940+00:00"
+    },
+    {
+      "command": [
+        "node",
+        "--import",
+        "tsx",
+        "scripts/chat.ts",
+        "--fictional-scratch",
+        "--today",
+        "2026-10-23"
+      ],
+      "exit": 0,
+      "at": "2026-10-27T18:17:29.372534+00:00",
+      "mode": "offline fictional scratch; network transports blocked; appended student memory-control turns",
+      "name": "controls"
+    },
+    {
+      "name": "offline-tests",
+      "at": "2026-10-27T18:16:23.066589+00:00",
+      "command": [
+        "node",
+        "--import",
+        "tsx",
+        "--test",
+        "test/agent-graph.test.ts",
+        "test/alias-mapping.test.ts",
+        "test/chat-cli.test.ts",
+        "test/consent.test.ts",
+        "test/controls.test.ts",
+        "test/conversation.test.ts",
+        "test/core.test.ts",
+        "test/correction.test.ts",
+        "test/distress-routing.test.ts",
+        "test/grounding-phrases.test.ts",
+        "test/journey.test.ts",
+        "test/live-run-diagnostics.test.ts",
+        "test/live-run-preflight.test.ts",
+        "test/llm-client.test.ts",
+        "test/memory-off.test.ts",
+        "test/memory-ops.test.ts",
+        "test/meterless.test.ts",
+        "test/model-compare.test.ts",
+        "test/model-planner.test.ts",
+        "test/model-safety.test.ts",
+        "test/model-wiring.test.ts",
+        "test/progress.test.ts",
+        "test/rag.test.ts",
+        "test/riya-memory.test.ts",
+        "test/routing-grounding.test.ts",
+        "test/study-data.test.ts",
+        "test/study-source.test.ts",
+        "test/verify-product-path.test.ts",
+        "test/webResearch.test.ts",
+        "test/why-card-provenance.test.ts",
+        "test/wiring-failures.test.ts",
+        "test/zetaris-query-format.test.ts",
+        "test/zetaris-study-data.test.ts"
+      ],
+      "exit": 1,
+      "counts": {
+        "tests": 306,
+        "pass": 302,
+        "fail": 2,
+        "skip": 2
+      },
+      "excluded": [
+        "mentor-ai.test.ts (external project imports)",
+        "live-run-safety.test.ts (installed Nightshift source dependency)"
+      ]
+    }
+  ],
+  "networkGuard": {
+    "path": "temporary packaging-only preload, not a product edit",
+    "source": "import http from 'node:http';\nimport https from 'node:https';\nimport net from 'node:net';\nimport { syncBuiltinESMExports } from 'node:module';\nconst denied = () => { throw new Error('PACKAGING_NETWORK_DISABLED'); };\nglobalThis.fetch = denied;\nhttp.request = http.get = https.request = https.get = denied;\nnet.connect = net.createConnection = net.Socket.prototype.connect = denied;\nsyncBuiltinESMExports();\n",
+    "appliedTo": [
+      "offline-tests",
+      "controls"
+    ],
+    "otherDemoRuns": "inspected deterministic local routes, clean child environment; no provider settings"
+  },
+  "cleanSetup": {
+    "source": "git archive HEAD into a fresh temporary directory; not a clone; no dirty overlay, dependency reuse or vendor copy",
+    "attempts": [
+      {
+        "command": [
+          "npm",
+          "ci",
+          "--ignore-scripts",
+          "--no-audit",
+          "--no-fund",
+          "--userconfig=/dev/null",
+          "--globalconfig=/dev/null",
+          "--cache=<PACKAGING_SCRATCH>/npm-cache",
+          "--fetch-retries=0",
+          "--fetch-timeout=15000"
+        ],
+        "exit": 1
+      },
+      {
+        "command": [
+          "npm",
+          "ci",
+          "--ignore-scripts",
+          "--no-audit",
+          "--no-fund",
+          "--userconfig=<PACKAGING_SCRATCH>/npm-user",
+          "--globalconfig=<PACKAGING_SCRATCH>/npm-global",
+          "--cache=<PACKAGING_SCRATCH>/npm-cache",
+          "--fetch-retries=0",
+          "--fetch-timeout=15000"
+        ],
+        "exit": 1
+      },
+      {
+        "command": [
+          "npm",
+          "run",
+          "setup"
+        ],
+        "exit": 128
+      }
+    ],
+    "result": "blocked by npm registry and GitHub DNS resolution; clean demo and tests not run"
+  },
+  "sanitization": "Actual chat/control: randomized scratch root replaced with <SCRATCH>; conformance: repository absolute path replaced with <REPO>; journey retained; historical receipt fields allowlisted.",
+  "evidenceSha256": {
+    "historical-live-summary.json": "c63ce3f9800ced5e9326b66d16dce31ea07cbc4c779abbee56fe4eece96a0170",
+    "journey-actual.txt": "482db10048db98531889da3e64b35d860c0b8156b08f231e1df83974f4f75647",
+    "hmem-conformance-actual.txt": "e7de75f788afb323cd6cf9c937429bd8ab80b96f59f0c45ec60ac4cb0e4672cf",
+    "chat-actual.txt": "64ad69280c38a29e5da0cdb2783e17750484dd4e2637d11f1cc104026e5dc676",
+    "controls-input.txt": "47262671748aa4fde627201748de7ca54f14f55b7d947b939774d373c14d37b2",
+    "controls-actual.txt": "16d3ca39d7bffb1ebe3376a6daf11007ccb3a3134255a623b2ace3426234ef64"
+  }
+}

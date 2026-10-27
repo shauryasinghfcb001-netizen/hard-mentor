@@ -14,19 +14,16 @@ import { fictionalSandbox, assertStudentStorage } from "../src/consent/storageGa
 // the model's proposal status. If HM_PLANNER=model is set but no model can be built
 // from the environment (modelFromEnv), the chat says so and uses the rule planner.
 
-import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import { pathToFileURL } from "node:url";
-import { converse, type ConversationEnv, type StudentProfile } from "../src/agent/conversation.ts";
+import { converse, type StudentProfile } from "../src/agent/conversation.ts";
 import { plannerFromEnv } from "../src/agent/modelPlanner.ts";
 import { rulePlanner, type Planner } from "../src/agent/planner.ts";
 import { renderWhyCard } from "../src/agent/whyCard.ts";
-import { fixtureResearch } from "../src/context/fixtureExams.ts";
 import { webResearch } from "../src/context/webResearch.ts";
 import { modelFromEnv, type ChatModel } from "../src/llm/client.ts";
-import { openStudentMemory, type StudentMemory } from "../src/memory/studentMemory.ts";
-import { bm25Retriever, loadCorpus } from "../src/rag/ncert.ts";
+import { chatEnvironment } from "./chat-environment.ts";
 import { RIYA } from "../src/synthetic/riya.ts";
 
 const PROFILES: Record<string, StudentProfile> = {
@@ -85,29 +82,8 @@ export async function runChat({ args, env: processEnv, lines, log, model }: Chat
   const quiet = args.includes("--quiet");
   const root = path.resolve(dataRoot);
   assertStudentStorage(path.join(root, "study-records.csv"), "riya");
-  fs.mkdirSync(root, { recursive: true });
-  const records = path.join(root, "study-records.csv");
-  if (!fs.existsSync(records)) fs.copyFileSync("seed/study-records.csv", records);
-
-  let t = Date.parse(`${today}T09:00:00Z`);
-  const clock = () => (t += 60_000);
-  const corpus = loadCorpus("corpus/ncert-phy12-ch1.json");
-  const memories = new Map<string, StudentMemory>();
   const choice = choosePlanner(processEnv, () => (model !== undefined ? model : modelFromEnv(processEnv)));
-  const env: ConversationEnv = {
-    planner: choice.planner,
-    retriever: bm25Retriever(corpus),
-    research: args.includes("--web") ? webResearch() : fixtureResearch,
-    corpora: [corpus],
-    records,
-    quizLog: path.join(root, "quiz-log.csv"),
-    sessionsDir: path.join(root, "sessions"),
-    async memoryFor(id) {
-      if (!memories.has(id)) memories.set(id, await openStudentMemory(id, { dataRoot: path.join(root, "students"), clock }));
-      return memories.get(id)!;
-    },
-    now: () => new Date(clock()).toISOString(),
-  };
+  const env = chatEnvironment(root, today!, choice.planner, args.includes("--web") ? webResearch() : undefined);
 
   if (choice.notice) log(choice.notice);
   log("TERMINAL DEMONSTRATION (not a student interface).");

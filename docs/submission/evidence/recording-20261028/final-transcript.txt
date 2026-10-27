@@ -1,0 +1,190 @@
+mentor> Hi Riya. Before I plan anything I need to know your exam. Which exam are you preparing for?
+
+you> 12th boards
+
+mentor> Thanks. Which country is 12th boards in?
+
+you> India
+
+mentor> What is your goal for it? For example a score or a rank.
+
+you> 90% in PCM
+
+mentor> When is the exam? Give a date like 2027-02-15, or say "not sure".
+
+you> 15 Feb 2027
+
+mentor> "12th boards" in India could mean 3 different exams. Which one are you taking?
+- CBSE Class 12 board exam (Central Board of Secondary Education)
+- ISC Class 12 exam (Council for the Indian School Certificate Examinations)
+- State board Class 12 exam (a state board of school education (varies by state))
+Reply with the name of yours.
+
+you> CBSE
+
+mentor> Riya, got it: CBSE Class 12 board exam (Central Board of Secondary Education), as you chose.
+What I know about it comes from a small offline list I was given, not from the web, so none of it is verified:
+- conducting_body: Central Board of Secondary Education (UNVERIFIED: mock fixture: not fetched from the web; source https://www.cbse.gov.in, retrieved never; written 2026-10-23 from general knowledge; not fetched)
+- textbooks: NCERT textbooks (UNVERIFIED: mock fixture: not fetched from the web; source https://ncert.nic.in, retrieved never; written 2026-10-23 from general knowledge; not fetched)
+Exam date 2027-02-15 is your date, not an official one (115 days from 2026-10-23).
+Local notes I can quiz you from: ncert-phy12-ch1.
+Say "plan my study for today" or "quiz me".
+
+you> Plan my study for today.
+
+mentor> Today: Electrostatics first for 90 min, then Integrals and Organic Chemistry.
+
+you> why this plan?
+
+mentor> Decision: daily_plan (sent)
+Why:
+  - Electrostatics is your top priority: mastery 0.35, marks weight 0.8, priority 0.656  [data_row: csv:study-records.csv#2]
+Loop:
+  1. [sense] intent plan (rules: schedule wording)
+  2. [recall] exam context: CBSE Class 12 board exam (student choice, 3 candidates); 0/2 facts verified; exam date 2027-02-15 (student-stated); research by fixture-exams-2026-10-23 (mock, not web) at 2026-10-23T09:03:00.000Z
+  3. [recall] ranked 4 topics by (1-mastery)*marks_weight*urgency; top physics:electrostatics
+  4. [recall] memory OFF: H-MEM not queried
+  5. [draft_plan] attempt 1 by rule-planner-v1 (rules): decision daily_plan
+  6. [check_plan] attempt 1 passed all rules
+  7. [respond] sent decision daily_plan
+  8. [write_back] memory OFF: no write-back
+SQL: (not available for this turn; see source provenance)
+
+you> quiz me
+
+mentor> Quiz quiz-ncert-phy12-ch1-2026-10-23-r0 on Electrostatics: 5 fill-in-the-blank questions cut from NCERT Physics Part I, Class 12 Ch 1 notes (built by rules, no model). These questions check recall of the notes' wording, not problem solving.
+Q1. Sparks when removing a sweater, lightning and small shocks from a car door all come from charge built up by rubbing insulating surfaces and then _____.
+    A) convention   B) discharging   C) permanent   D) presence
+    [from NCERT Physics Part I, Class 12, Ch 1, §1.1, p. 1]
+Q2. By _____, the charge on a glass rod or cat's fur is called positive and the charge on a plastic rod or silk is called negative.
+    A) comparatively   B) convention   C) disturb   D) uniform
+    [from NCERT Physics Part I, Class 12, Ch 1, §1.2, pp. 1-2]
+Q3. Conductors let charge move through them easily because they contain _____ free electrons.
+    A) algebraic   B) comparatively   C) directions   D) distribution
+    [from NCERT Physics Part I, Class 12, Ch 1, §1.3, p. 3]
+Q4. Charges add like real numbers (scalars): the total charge of a system is the _____ sum of the individual charges, with signs.
+    A) algebraic   B) measures   C) quantisation   D) spherical
+    [from NCERT Physics Part I, Class 12, Ch 1, §1.4.1, 1.4.2, p. 4]
+Q5. At everyday (macroscopic) scales the charges are so large compared with e that _____ can be ignored and charge treated as continuous.
+    A) discharging   B) permanent   C) presence   D) quantisation
+    [from NCERT Physics Part I, Class 12, Ch 1, §1.4.3, pp. 5-6]
+Answer with letters in order (e.g. "B, A, D, C, A") or one at a time ("Q2: B"). Say "pass" for one you don't know, or "cancel quiz" to stop. Nothing is saved until all 5 are answered.
+
+you> B, B
+
+mentor> Got Q1, Q2. 2/5 answered; still open: Q3, Q4, Q5. Nothing is saved until all are answered, or say "cancel quiz".
+
+you> Q3: directions, Q4: A, Q5: D
+
+mentor> Quiz quiz-ncert-phy12-ch1-2026-10-23-r0: 4/5.
+Q1 correct: "discharging" [NCERT Physics Part I, Class 12, Ch 1, §1.1, p. 1]
+Q2 correct: "convention" [NCERT Physics Part I, Class 12, Ch 1, §1.2, pp. 1-2]
+Q3 wrong: you chose "directions"; the answer is "comparatively". The note says: "Conductors let charge move through them easily because they contain comparatively free electrons." [NCERT Physics Part I, Class 12, Ch 1, §1.3, p. 3]
+Q4 correct: "algebraic" [NCERT Physics Part I, Class 12, Ch 1, §1.4.1, 1.4.2, p. 4]
+Q5 correct: "quantisation" [NCERT Physics Part I, Class 12, Ch 1, §1.4.3, pp. 5-6]
+Saved: mastery 0.35 -> 0.485 (m = 0.7m + 0.3 x score) in csv:study-records.csv#2; quiz log csv:quiz-log.csv#2; memory off (not written).
+Revise note phy12-1-3 next.
+These questions check recall of the notes' wording, not problem solving. Ask "plan my study for today" to see how this changes your plan.
+
+you> Q3: directions, Q4: A, Q5: D
+
+mentor> No quiz is open. Your last quiz quiz-ncert-phy12-ch1-2026-10-23-r0 was already scored 4/5 and saved once (csv:quiz-log.csv#2); I did not count these answers again. Say "quiz me" for a new quiz.
+
+you> Plan my study for today.
+
+mentor> Today: Electrostatics first for 90 min, then Integrals and Organic Chemistry.
+What changed since your last plan (2026-10-23 09:06 UTC):
+- Electrostatics mastery 0.35 -> 0.485 after quiz quiz-ncert-phy12-ch1-2026-10-23-r0 (4/5, csv:quiz-log.csv#2); priority 0.656 -> 0.519
+- Top topic unchanged: Electrostatics still has the highest priority (0.519).
+
+you> quiz me
+
+mentor> Quiz quiz-ncert-phy12-ch1-2026-10-23-r1 on Electrostatics: 5 fill-in-the-blank questions cut from NCERT Physics Part I, Class 12 Ch 1 notes (built by rules, no model). These questions check recall of the notes' wording, not problem solving.
+Q1. The _____ of other charges does not change an individual pairwise force.
+    A) discharging   B) permanent   C) presence   D) quantisation
+    [from NCERT Physics Part I, Class 12, Ch 1, §1.6, pp. 11-12]
+Q2. The test charge must be very small so it does not _____ the source.
+    A) convention   B) disturb   C) presence   D) uniform
+    [from NCERT Physics Part I, Class 12, Ch 1, §1.7, 1.7.1, pp. 14-15]
+Q3. Two field lines never cross, because the field at a crossing point would have two _____.
+    A) comparatively   B) directions   C) distribution   D) disturb
+    [from NCERT Physics Part I, Class 12, Ch 1, §1.8, pp. 19-21]
+Q4. Flux _____ the number of field lines crossing the surface.
+    A) algebraic   B) directions   C) measures   D) spherical
+    [from NCERT Physics Part I, Class 12, Ch 1, §1.9, pp. 21-23]
+Q5. Molecules such as water have a _____ dipole moment.
+    A) discharging   B) measures   C) permanent   D) quantisation
+    [from NCERT Physics Part I, Class 12, Ch 1, §1.10, pp. 23-25]
+Answer with letters in order (e.g. "B, A, D, C, A") or one at a time ("Q2: B"). Say "pass" for one you don't know, or "cancel quiz" to stop. Nothing is saved until all 5 are answered.
+
+you> C, B, B, C, C
+
+mentor> Quiz quiz-ncert-phy12-ch1-2026-10-23-r1: 5/5.
+Q1 correct: "presence" [NCERT Physics Part I, Class 12, Ch 1, §1.6, pp. 11-12]
+Q2 correct: "disturb" [NCERT Physics Part I, Class 12, Ch 1, §1.7, 1.7.1, pp. 14-15]
+Q3 correct: "directions" [NCERT Physics Part I, Class 12, Ch 1, §1.8, pp. 19-21]
+Q4 correct: "measures" [NCERT Physics Part I, Class 12, Ch 1, §1.9, pp. 21-23]
+Q5 correct: "permanent" [NCERT Physics Part I, Class 12, Ch 1, §1.10, pp. 23-25]
+Saved: mastery 0.485 -> 0.64 (m = 0.7m + 0.3 x score) in csv:study-records.csv#2; quiz log csv:quiz-log.csv#3; memory off (not written).
+No notes missed.
+These questions check recall of the notes' wording, not problem solving. Ask "plan my study for today" to see how this changes your plan.
+
+you> Plan my study for today.
+
+mentor> Today: Integrals first for 90 min, then Electrostatics and Organic Chemistry.
+What changed since your last plan (2026-10-23 09:14 UTC):
+- Electrostatics mastery 0.485 -> 0.64 after quiz quiz-ncert-phy12-ch1-2026-10-23-r1 (5/5, csv:quiz-log.csv#3); priority 0.519 -> 0.363
+- Top topic changed from Electrostatics to Integrals: Integrals now has the highest priority (0.441 vs 0.363).
+
+you> my progress
+
+mentor> Progress for riya: 2 saved quiz attempts, newest first (showing 2).
+- 2026-10-23 Electrostatics: 5/5 (100%), mastery 0.485 -> 0.64; no misses [quiz-ncert-phy12-ch1-2026-10-23-r1]
+    next topic after this quiz: Electrostatics -> Integrals
+- 2026-10-23 Electrostatics: 4/5 (80%), mastery 0.35 -> 0.485; missed Q3 [quiz-ncert-phy12-ch1-2026-10-23-r0]
+Next recommendation changed after the latest quiz: Electrostatics (mastery 0.485, priority 0.519) -> Integrals (mastery 0.5, priority 0.441).
+Weak, weakest first: Integrals, Organic Chemistry, Electrostatics. Mastered (>= 0.85): Optics.
+
+you> turn memory on
+
+mentor> Memory is on again. I will recall and save short summaries of plans and quiz results, never your typed answers.
+
+you> Plan my study for today.
+
+mentor> Today: Integrals first for 90 min, then Electrostatics and Organic Chemistry.
+What changed since your last plan (2026-10-23 09:20 UTC):
+- No study record changed.
+- Top topic unchanged: Integrals still has the highest priority (0.441).
+
+you> what do you remember
+
+mentor> Here is everything I remember about you (1):
+- On 2026-10-23 the student sent a plan; the mentor decided daily_plan (sent) with plan topics maths:integrals, physics:electrostatics, chemistry:organic. [mem-1]
+Say "forget <words>" to delete any of it.
+
+you> turn memory off
+
+mentor> Memory is off. I will not recall or save anything new about you. Memories stored earlier are kept, not deleted; say "what do you remember" to see them or "forget <words>" to delete them. Say "turn memory on" to resume.
+
+you> Plan my study for today.
+
+mentor> Today: Integrals first for 90 min, then Electrostatics and Organic Chemistry.
+What changed since your last plan (2026-10-23 09:27 UTC):
+- No study record changed.
+- Top topic unchanged: Integrals still has the highest priority (0.441).
+
+you> what do you remember
+
+mentor> Here is everything I remember about you (1):
+- On 2026-10-23 the student sent a plan; the mentor decided daily_plan (sent) with plan topics maths:integrals, physics:electrostatics, chemistry:organic. [mem-1]
+Say "forget <words>" to delete any of it.
+
+you> forget plan
+
+mentor> Done. I deleted 1 memory:
+- On 2026-10-23 the student sent a plan; the mentor decided daily_plan (sent) with plan topics maths:integrals, physics:electrostatics, chemistry:organic. [mem-1]
+I won't use it again. My log keeps only the id, the time and "forgotten", not the text.
+
+you> what do you remember
+
+mentor> I don't remember anything about you yet.

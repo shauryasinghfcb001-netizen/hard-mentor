@@ -1,3 +1,4 @@
+import { fictionalSandbox } from "../src/consent/storageGate.ts";
 // OFFLINE MOCK - not Zetaris connection evidence.
 // HM_STUDY_SOURCE selection in converse(). Dummy credentials, globalThis.fetch is
 // replaced by a mock for the duration of each test; no socket is opened.
@@ -48,7 +49,7 @@ function useZetaris(fail = false) {
 }
 
 function setup() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "hm-src-"));
+  const root = fictionalSandbox("hm-src-");
   const records = path.join(root, "study-records.csv");
   fs.copyFileSync("seed/study-records.csv", records);
   let t = Date.parse("2026-10-23T09:00:00Z");

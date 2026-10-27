@@ -1,0 +1,40 @@
+# Fictional conversation for `npm run demo:chat`. Riya and Kabir are fictional.
+# Answers are typed by this script, chosen so one question is wrong in quiz 1.
+# --- 1. Exam intake (research = offline MOCK list, nothing fetched) ---
+hi
+12th boards
+India
+90% in PCM
+15 Feb 2027
+CBSE
+# --- 2. First plan, before any quiz ---
+Plan my study for today.
+# --- 3. Quiz request, answers over several messages ---
+quiz me
+B, B
+# A message that is not an answer: the quiz stays open, nothing is saved
+Can I do this later?
+# Another student talks in between: Kabir's session is separate from Riya's open quiz
+kabir> quiz me
+Q3: directions, Q4: A, Q5: D
+# --- 4. The same completion message again: must not be counted twice ---
+Q3: directions, Q4: A, Q5: D
+# --- 5. Next plan: reads the saved record and quiz log ---
+Plan my study for today.
+# --- 6. Second quiz: started, then cancelled (no score), then retaken ---
+quiz me
+C, B
+cancel quiz
+quiz me
+C, B, B, C, C
+Plan my study for today.
+# --- 7. What memory now holds ---
+What do you remember about me?
+my progress
+
+turn memory off
+What do you remember about me?
+forget plan
+forget quiz
+What do you remember about me?
+turn memory on

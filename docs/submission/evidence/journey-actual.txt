@@ -1,0 +1,125 @@
+WHAT RAN: research = offline MOCK fixture (no web, nothing fetched); planner = rule-planner-v1 (no model);
+memory = H-MEM (vendor/hmem); study records = local synthetic CSV copy; student, answers and exam date are fictional.
+
+=== 1. Riya (fictional) says: exam "12th boards", country "India", goal "90% in PCM", exam date "2027-02-15" ===
+Mentor: "12th boards" in India could mean 3 different exams. Which one are you taking?
+  - CBSE Class 12 board exam (Central Board of Secondary Education)
+  - ISC Class 12 exam (Council for the Indian School Certificate Examinations)
+  - State board Class 12 exam (a state board of school education (varies by state))
+
+=== 2. Riya answers: "CBSE" ===
+Exam: CBSE Class 12 board exam (resolved by student choice)
+  fact conducting_body = "Central Board of Secondary Education": UNVERIFIED (mock fixture: not fetched from the web); source https://www.cbse.gov.in, retrieved never, published n/a
+  fact textbooks = "NCERT textbooks": UNVERIFIED (mock fixture: not fetched from the web); source https://ncert.nic.in, retrieved never, published n/a
+  exam date 2027-02-15 (student-stated); days to exam from 2026-10-23: 115
+  local notes for this exam: ncert-phy12-ch1 (NCERT Physics Part I, Class 12, Ch 1, Reprint 2026-27, from https://ncert.nic.in/textbook/pdf/leph101.pdf)
+
+=== 3. Plan: "Plan my study for today." ===
+Mentor: Today: Electrostatics first for 90 min, then Integrals and Organic Chemistry.
+Decision: daily_plan (sent)
+Why:
+  - Electrostatics is your top priority: mastery 0.35, marks weight 0.8, priority 0.656  [data_row: csv:study-records.csv#2]
+Loop:
+  1. [sense] intent plan (rules: schedule wording)
+  2. [recall] exam context: CBSE Class 12 board exam (student choice, 3 candidates); 0/2 facts verified; exam date 2027-02-15 (student-stated); research by fixture-exams-2026-10-23 (mock, not web) at 2026-10-23T09:01:00Z
+  3. [recall] ranked 4 topics by (1-mastery)*marks_weight*urgency; top physics:electrostatics
+  4. [recall] H-MEM (vendor/hmem) returned 0: hybrid ranking for "Plan my study for today." (domain: general)
+  5. [draft_plan] attempt 1 by rule-planner-v1 (rules): decision daily_plan
+  6. [check_plan] attempt 1 passed all rules
+  7. [respond] sent decision daily_plan
+  8. [write_back] H-MEM episode mem-1 written (decision summary, not the raw message)
+SQL: (not available for this turn; see source provenance)
+
+=== 4. Quiz quiz-ncert-phy12-ch1-2026-10-23-r0 on physics:electrostatics (built from the notes, no model) ===
+Q1. Sparks when removing a sweater, lightning and small shocks from a car door all come from charge built up by rubbing insulating surfaces and then _____.
+    A) convention   B) discharging   C) permanent   D) presence
+    [from NCERT Physics Part I, Class 12, Ch 1, §1.1, p. 1]
+Q2. By _____, the charge on a glass rod or cat's fur is called positive and the charge on a plastic rod or silk is called negative.
+    A) comparatively   B) convention   C) disturb   D) uniform
+    [from NCERT Physics Part I, Class 12, Ch 1, §1.2, pp. 1-2]
+Q3. Conductors let charge move through them easily because they contain _____ free electrons.
+    A) algebraic   B) comparatively   C) directions   D) distribution
+    [from NCERT Physics Part I, Class 12, Ch 1, §1.3, p. 3]
+Q4. Charges add like real numbers (scalars): the total charge of a system is the _____ sum of the individual charges, with signs.
+    A) algebraic   B) measures   C) quantisation   D) spherical
+    [from NCERT Physics Part I, Class 12, Ch 1, §1.4.1, 1.4.2, p. 4]
+Q5. At everyday (macroscopic) scales the charges are so large compared with e that _____ can be ignored and charge treated as continuous.
+    A) discharging   B) permanent   C) presence   D) quantisation
+    [from NCERT Physics Part I, Class 12, Ch 1, §1.4.3, pp. 5-6]
+Riya's answers (simulated, fictional): discharging, convention, algebraic, algebraic, quantisation
+Score 4/5. Mastery 0.35 -> 0.485 (m = 0.7m + 0.3 score)
+Written: study record csv:study-records.csv#2; quiz log csv:quiz-log.csv#2; H-MEM mem-2
+
+=== 5. Plan after quiz: "Plan my study for today." ===
+Mentor: Today: Electrostatics first for 90 min, then Integrals and Organic Chemistry.
+Decision: daily_plan (sent)
+Why:
+  - Electrostatics is your top priority: mastery 0.48, marks weight 0.8, priority 0.519  [data_row: csv:study-records.csv#2]
+  - Electrostatics mastery was last updated by quiz quiz-ncert-phy12-ch1-2026-10-23-r0: 4/5 on 2026-10-23  [quiz: csv:quiz-log.csv#2]
+Loop:
+  1. [sense] intent plan (rules: schedule wording)
+  2. [recall] exam context: CBSE Class 12 board exam (student choice, 3 candidates); 0/2 facts verified; exam date 2027-02-15 (student-stated); research by fixture-exams-2026-10-23 (mock, not web) at 2026-10-23T09:01:00Z
+  3. [recall] ranked 4 topics by (1-mastery)*marks_weight*urgency; top physics:electrostatics
+  4. [recall] H-MEM (vendor/hmem) returned 1: hybrid ranking for "Plan my study for today." (domain: general)
+  5. [draft_plan] attempt 1 by rule-planner-v1 (rules): decision daily_plan
+  6. [check_plan] attempt 1 passed all rules
+  7. [respond] sent decision daily_plan
+  8. [write_back] H-MEM episode mem-3 written (decision summary, not the raw message)
+SQL: (not available for this turn; see source provenance)
+
+=== 6. Quiz quiz-ncert-phy12-ch1-2026-10-23-r1 on physics:electrostatics (built from the notes, no model) ===
+Q1. The _____ of other charges does not change an individual pairwise force.
+    A) discharging   B) permanent   C) presence   D) quantisation
+    [from NCERT Physics Part I, Class 12, Ch 1, §1.6, pp. 11-12]
+Q2. The test charge must be very small so it does not _____ the source.
+    A) convention   B) disturb   C) presence   D) uniform
+    [from NCERT Physics Part I, Class 12, Ch 1, §1.7, 1.7.1, pp. 14-15]
+Q3. Two field lines never cross, because the field at a crossing point would have two _____.
+    A) comparatively   B) directions   C) distribution   D) disturb
+    [from NCERT Physics Part I, Class 12, Ch 1, §1.8, pp. 19-21]
+Q4. Flux _____ the number of field lines crossing the surface.
+    A) algebraic   B) directions   C) measures   D) spherical
+    [from NCERT Physics Part I, Class 12, Ch 1, §1.9, pp. 21-23]
+Q5. Molecules such as water have a _____ dipole moment.
+    A) discharging   B) measures   C) permanent   D) quantisation
+    [from NCERT Physics Part I, Class 12, Ch 1, §1.10, pp. 23-25]
+Riya's answers (simulated, fictional): presence, disturb, directions, measures, permanent
+Score 5/5. Mastery 0.485 -> 0.64 (m = 0.7m + 0.3 score)
+Written: study record csv:study-records.csv#2; quiz log csv:quiz-log.csv#3; H-MEM mem-4
+
+=== 7. Plan after quiz: "Plan my study for today." ===
+Mentor: Today: Integrals first for 90 min, then Electrostatics and Organic Chemistry.
+Decision: daily_plan (sent)
+Why:
+  - Integrals is your top priority: mastery 0.50, marks weight 0.7, priority 0.441  [data_row: csv:study-records.csv#4]
+  - Electrostatics mastery was last updated by quiz quiz-ncert-phy12-ch1-2026-10-23-r1: 5/5 on 2026-10-23  [quiz: csv:quiz-log.csv#3]
+Loop:
+  1. [sense] intent plan (rules: schedule wording)
+  2. [recall] exam context: CBSE Class 12 board exam (student choice, 3 candidates); 0/2 facts verified; exam date 2027-02-15 (student-stated); research by fixture-exams-2026-10-23 (mock, not web) at 2026-10-23T09:01:00Z
+  3. [recall] ranked 4 topics by (1-mastery)*marks_weight*urgency; top maths:integrals
+  4. [recall] H-MEM (vendor/hmem) returned 2: hybrid ranking for "Plan my study for today." (domain: general)
+  5. [draft_plan] attempt 1 by rule-planner-v1 (rules): decision daily_plan
+  6. [check_plan] attempt 1 passed all rules
+  7. [respond] sent decision daily_plan
+  8. [write_back] H-MEM episode mem-5 written (decision summary, not the raw message)
+SQL: (not available for this turn; see source provenance)
+
+=== 8. Memory: "What do you remember about me?" ===
+Mentor: Here is everything I remember about you (5):
+- On 2026-10-23 the student sent a plan; the mentor decided daily_plan (sent) with plan topics physics:electrostatics, maths:integrals, chemistry:organic. [mem-1]
+- On 2026-10-23 the student scored 4/5 on quiz quiz-ncert-phy12-ch1-2026-10-23-r0 (physics:electrostatics); mastery 0.35 -> 0.485; missed notes phy12-1-3. [mem-2]
+- On 2026-10-23 the student sent a plan; the mentor decided daily_plan (sent) with plan topics physics:electrostatics, maths:integrals, chemistry:organic. [mem-3]
+- On 2026-10-23 the student scored 5/5 on quiz quiz-ncert-phy12-ch1-2026-10-23-r1 (physics:electrostatics); mastery 0.485 -> 0.64; no notes missed. [mem-4]
+- On 2026-10-23 the student sent a plan; the mentor decided daily_plan (sent) with plan topics maths:integrals, physics:electrostatics, chemistry:organic. [mem-5]
+Say "forget <words>" to delete any of it.
+Decision: memory_list (memory_op)
+Why:
+  - Stored: On 2026-10-23 the student sent a plan; the mentor decided daily_plan (sent) with plan topics physics:electrostatics, maths:integrals, chemistry:organic.  [memory: mem-1]
+  - Stored: On 2026-10-23 the student scored 4/5 on quiz quiz-ncert-phy12-ch1-2026-10-23-r0 (physics:electrostatics); mastery 0.35 -> 0.485; missed notes phy12-1-3.  [memory: mem-2]
+  - Stored: On 2026-10-23 the student sent a plan; the mentor decided daily_plan (sent) with plan topics physics:electrostatics, maths:integrals, chemistry:organic.  [memory: mem-3]
+  - Stored: On 2026-10-23 the student scored 5/5 on quiz quiz-ncert-phy12-ch1-2026-10-23-r1 (physics:electrostatics); mastery 0.485 -> 0.64; no notes missed.  [memory: mem-4]
+  - Stored: On 2026-10-23 the student sent a plan; the mentor decided daily_plan (sent) with plan topics maths:integrals, physics:electrostatics, chemistry:organic.  [memory: mem-5]
+Loop:
+  1. [sense] intent memory_list (rules)
+  2. [memory_ops] listed 5 H-MEM records
+SQL: (not available for this turn; see source provenance)

@@ -22,7 +22,8 @@
     "progress": "node --import tsx scripts/progress.ts",
     "eval:heldout": "sh -c 'S=$(date +%Y%m%d-%H%M%S); mkdir -p evidence; HM_EVAL_OUT=evidence/heldout-eval-$S.json node --import tsx --test eval/heldout.test.ts'",
     "eval:frozen": "sh -c 'S=$(date +%Y%m%d-%H%M%S); mkdir -p evidence; HM_EVAL_OUT=evidence/frozen-v2-run-$S.json node --import tsx --test eval/frozen-v2.test.ts'",
-    "test:hmem-conformance": "node --import tsx scripts/hmem-conformance.ts"
+    "test:hmem-conformance": "node --import tsx scripts/hmem-conformance.ts",
+    "record": "env -i PATH=\"$PATH\" TMPDIR=\"${TMPDIR:-/tmp}\" HM_TEST_NO_NETWORK=1 HM_STUDY_SOURCE=csv node --import tsx scripts/record.ts"
   },
   "devDependencies": {
     "@types/node": "24.19.1",

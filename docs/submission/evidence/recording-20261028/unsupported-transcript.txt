@@ -1,0 +1,28 @@
+mentor> Hi Riya. Before I plan anything I need to know your exam. Which exam are you preparing for?
+
+you> Martian Entrance Exam
+
+mentor> Thanks. Which country is Martian Entrance Exam in?
+
+you> India
+
+mentor> What is your goal for it? For example a score or a rank.
+
+you> 90%
+
+mentor> When is the exam? Give a date like 2027-02-15, or say "not sure".
+
+you> 15 Feb 2027
+
+mentor> I could not find "Martian Entrance Exam" (India). Web research is not built yet; I only have a small offline list of exams, so I can't look this up. You can name a different exam, or say "continue without research" and I will plan from your date and goal only, without any exam facts.
+
+you> continue without research
+
+mentor> Riya, I have not researched Martian Entrance Exam (India): I could not research it, and I won't guess facts about it. I have no syllabus, weightage or official dates for it.
+I'll use your exam date 2027-02-15, which is yours, not an official one (115 days from 2026-10-23).
+Your plan is ranked from your saved study records and the marks weights stored in them, not from anything I researched about Martian Entrance Exam. I have no notes to quiz you from for it.
+Say "plan my study for today". You can say "change my exam to <name>" later to try the lookup again.
+
+you> quiz me
+
+mentor> I have no local notes for any topic in your study records, so I can't build a quiz yet.

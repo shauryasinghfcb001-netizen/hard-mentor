@@ -1,0 +1,7 @@
+student_id,topic_id,subject,name,mastery,marks_weight
+riya,physics:electrostatics,physics,Electrostatics,0.64,0.8
+riya,chemistry:organic,chemistry,Organic Chemistry,0.6,0.6
+riya,maths:integrals,maths,Integrals,0.5,0.7
+riya,physics:optics,physics,Optics,0.9,0.7
+kabir,maths:integrals,maths,Integrals,0.8,0.7
+kabir,chemistry:organic,chemistry,Organic Chemistry,0.3,0.6

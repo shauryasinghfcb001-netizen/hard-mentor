@@ -1,0 +1,23 @@
+{
+  "algorithm": "sha256",
+  "scope": "selected existing public evidence and allowlisted browser checkpoint extract; no rerun",
+  "files": {
+    "chat-actual.txt": "64ad69280c38a29e5da0cdb2783e17750484dd4e2637d11f1cc104026e5dc676",
+    "journey-actual.txt": "482db10048db98531889da3e64b35d860c0b8156b08f231e1df83974f4f75647",
+    "controls-input.txt": "47262671748aa4fde627201748de7ca54f14f55b7d947b939774d373c14d37b2",
+    "controls-actual.txt": "16d3ca39d7bffb1ebe3376a6daf11007ccb3a3134255a623b2ace3426234ef64",
+    "hmem-conformance-actual.txt": "e7de75f788afb323cd6cf9c937429bd8ab80b96f59f0c45ec60ac4cb0e4672cf",
+    "historical-live-summary.json": "c63ce3f9800ced5e9326b66d16dce31ea07cbc4c779abbee56fe4eece96a0170",
+    "runs.json": "fcd45a310d1fb9a7f7cc47cbb0080f12424d1dbc8a703c6b32022f493dbf659e",
+    "browser-checkpoints.json": "a9e0afc3d99f83c069f9f7e7d1ac66c44754fb4a25474becab84863d07f300b7",
+    "recording-20261028/final-transcript.txt": "e16a1d8f649cf9c192dc6ef1b78addca9193bc686e5ea7ff2be563380fe2a9fd",
+    "recording-20261028/final-quiz-attempts.jsonl": "3e45b6fcacee1d39d7275ec4843edc789f34219c9db76098c0f3d1ab5fe7b716",
+    "recording-20261028/final-quiz-log.csv": "52417e7c5ff78dbe2b31174808518a138fd17951c30854a2d2ea1753790060d0",
+    "recording-20261028/final-study-records.csv": "ce4b7002115dd030eb6613d31d91e60f4be7a364b908a38df8e1345dda0422d5",
+    "recording-20261028/unsupported-transcript.txt": "c456f0a10ee4fcf4b530a351c1314f40ba908d0a4ce767c8ad2ab42c4e316dfd",
+    "recording-20261028/09-stored-progress-panel.png": "ee276ab1171937df0cb40084925cbad418eee274c667da0789230c2df99fa1c8",
+    "recording-20261028/typecheck.txt": "f81051948c92775ed442c0757cb852cee97f5ac2e4faf7511489c299ddebd824",
+    "recording-20261028/focused-tests.txt": "2f438722c074c6851f306b80a49d81d880d8e7b63831438fa7113f1aff4a3e1c",
+    "recording-20261028/http-tests.txt": "286579a33fa40e16a11372177754fa673af0de0b4992fb9556cfdba58fdebaa5"
+  }
+}

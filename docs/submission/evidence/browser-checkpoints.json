@@ -1,0 +1,45 @@
+{
+  "description": "Allowlisted counts and mastery extracted from actual Oct 28 browser scratch snapshots; source snapshots retained locally, not a new execution or expected fixture",
+  "checkpoints": {
+    "firstCompletion": {
+      "sourceFile": "first-score-state.json",
+      "scores": 1,
+      "attempts": 1,
+      "memoryOn": false,
+      "summaryCount": 0,
+      "electrostaticsMastery": 0.485
+    },
+    "repeatedCompletion": {
+      "sourceFile": "repeat-state.json",
+      "scores": 1,
+      "attempts": 1,
+      "memoryOn": false,
+      "summaryCount": 0,
+      "electrostaticsMastery": 0.485
+    },
+    "memoryOn": {
+      "sourceFile": "memory-on-state.json",
+      "scores": 2,
+      "attempts": 2,
+      "memoryOn": true,
+      "summaryCount": 1,
+      "electrostaticsMastery": 0.64
+    },
+    "memoryOffRetained": {
+      "sourceFile": "memory-off-state.json",
+      "scores": 2,
+      "attempts": 2,
+      "memoryOn": false,
+      "summaryCount": 1,
+      "electrostaticsMastery": 0.64
+    },
+    "afterForget": {
+      "sourceFile": "final-recording-state.json",
+      "scores": 2,
+      "attempts": 2,
+      "memoryOn": false,
+      "summaryCount": 0,
+      "electrostaticsMastery": 0.64
+    }
+  }
+}

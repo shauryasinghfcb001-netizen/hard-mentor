@@ -1,3 +1,4 @@
+import { fictionalSandbox } from "../src/consent/storageGate.ts";
 // Meterless Runtime adapter against the 0.90.0 contract. Every response here
 // comes from a mocked fetch: no runtime was installed or called.
 
@@ -154,7 +155,7 @@ test("env: LLM_PROVIDER=meterless never falls back to NVIDIA or OpenRouter, even
 });
 
 test("env: token is read from <METERLESS_STATE_DIR>/proxy-token when the key is not set", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hm-mt-"));
+  const dir = fictionalSandbox("hm-mt-");
   assert.equal(meterlessFromEnv({ METERLESS_STATE_DIR: dir }), null);
   fs.writeFileSync(path.join(dir, "proxy-token"), `${TOKEN}\n`);
   assert.equal(meterlessFromEnv({ METERLESS_STATE_DIR: dir, METERLESS_MODEL: "meterless/text.fast" })?.model, "meterless/text.fast");

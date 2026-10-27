@@ -111,10 +111,10 @@ describe("OFFLINE MOCK - not Zetaris connection evidence: fail closed", () => {
   test("network error on login", async () => {
     await failure(src(mock({ throws: true }).f).topicsFor("a"), /login request failed/);
   });
-  test("login 404 bad credentials message", async () => {
+  test("login 404 reports status and endpoint without guessing the cause", async () => {
     await failure(
       src(mock({ status: 404, body: { message: PASS } }).f).topicsFor("a"),
-      /login returned HTTP 404 \(can indicate bad credentials on this platform\) \(localhost:3000\/api\/auth\/login\)/
+      /^Zetaris unavailable: login returned HTTP 404 \(localhost:3000\/api\/auth\/login\)$/
     );
   });
   test("login non-2xx", async () => {
